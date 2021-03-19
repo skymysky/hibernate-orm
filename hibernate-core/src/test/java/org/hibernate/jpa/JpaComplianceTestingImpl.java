@@ -6,6 +6,8 @@
  */
 package org.hibernate.jpa;
 
+import org.hibernate.jpa.spi.JpaCompliance;
+
 /**
  * @author Steve Ebersole
  */
@@ -43,6 +45,8 @@ public class JpaComplianceTestingImpl implements JpaCompliance {
 	private boolean listCompliance;
 	private boolean closedCompliance;
 	private boolean proxyCompliance;
+	private boolean cacheCompliance;
+	private boolean idGeneratorNameScopeCompliance;
 
 	@Override
 	public boolean isJpaQueryComplianceEnabled() {
@@ -67,5 +71,15 @@ public class JpaComplianceTestingImpl implements JpaCompliance {
 	@Override
 	public boolean isJpaProxyComplianceEnabled() {
 		return proxyCompliance;
+	}
+
+	@Override
+	public boolean isJpaCacheComplianceEnabled() {
+		return cacheCompliance;
+	}
+
+	@Override
+	public boolean isGlobalGeneratorScopeEnabled() {
+		return idGeneratorNameScopeCompliance;
 	}
 }

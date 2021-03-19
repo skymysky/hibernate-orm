@@ -9,7 +9,10 @@ package org.hibernate.query.criteria.internal.compile;
 import javax.persistence.criteria.ParameterExpression;
 
 import org.hibernate.dialect.Dialect;
+import org.hibernate.internal.util.collections.Stack;
 import org.hibernate.query.criteria.LiteralHandlingMode;
+import org.hibernate.query.criteria.internal.expression.function.FunctionExpression;
+import org.hibernate.sql.ast.Clause;
 
 /**
  * Used to provide a context and services to the rendering.
@@ -37,7 +40,7 @@ public interface RenderingContext {
 	 * Register a parameter that was not part of the criteria query (at least not as a parameter).
 	 *
 	 * @param literal The literal value
-	 * @param javaType The java type as whcih to handle the literal value.
+	 * @param javaType The java type as which to handle the literal value.
 	 *
 	 * @return The JPA-QL parameter name
 	 */
@@ -67,4 +70,8 @@ public interface RenderingContext {
 	default LiteralHandlingMode getCriteriaLiteralHandlingMode() {
 		return LiteralHandlingMode.AUTO;
 	}
+
+	Stack<Clause> getClauseStack();
+
+	Stack<FunctionExpression> getFunctionStack();
 }

@@ -7,42 +7,45 @@
 package org.hibernate.spatial.dialect.oracle;
 
 import java.io.Serializable;
-
-import org.geolatte.geom.codec.db.oracle.ConnectionFinder;
-import org.geolatte.geom.codec.db.oracle.OracleJDBCTypeFactory;
-
-import org.jboss.logging.Logger;
+import java.util.Locale;
 
 import org.hibernate.boot.model.TypeContributions;
 import org.hibernate.boot.registry.selector.spi.StrategySelector;
 import org.hibernate.engine.config.spi.ConfigurationService;
 import org.hibernate.service.ServiceRegistry;
+import org.hibernate.spatial.GeolatteGeometryJavaTypeDescriptor;
 import org.hibernate.spatial.GeolatteGeometryType;
 import org.hibernate.spatial.HSMessageLogger;
 import org.hibernate.spatial.HibernateSpatialConfigurationSettings;
+import org.hibernate.spatial.JTSGeometryJavaTypeDescriptor;
 import org.hibernate.spatial.JTSGeometryType;
 import org.hibernate.spatial.SpatialDialect;
 import org.hibernate.spatial.SpatialFunction;
 import org.hibernate.spatial.SpatialRelation;
 import org.hibernate.spatial.dialect.SpatialFunctionsRegistry;
+import org.hibernate.spatial.dialect.WithCustomJPAFilter;
+
+import org.jboss.logging.Logger;
+
+import org.geolatte.geom.codec.db.oracle.ConnectionFinder;
+import org.geolatte.geom.codec.db.oracle.OracleJDBCTypeFactory;
 
 /**
  * SDO Geometry support for Oracle dialects
  * <p>
  * Created by Karel Maesen, Geovise BVBA on 01/11/16.
  */
-class OracleSDOSupport implements SpatialDialect, Serializable {
+class OracleSDOSupport implements SpatialDialect, Serializable, WithCustomJPAFilter {
 
 	private static final HSMessageLogger log = Logger.getMessageLogger(
 			HSMessageLogger.class,
 			OracleSpatial10gDialect.class.getName()
 	);
 
-	private final boolean isOgcStrict;
+
 	private final SpatialFunctionsRegistry sdoFunctions;
 
 	OracleSDOSupport(boolean isOgcStrict) {
-		this.isOgcStrict = isOgcStrict;
 		this.sdoFunctions = new OracleSpatialFunctions( isOgcStrict, this );
 	}
 
@@ -54,6 +57,9 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 		final SDOGeometryTypeDescriptor sdoGeometryTypeDescriptor = mkSdoGeometryTypeDescriptor( serviceRegistry );
 		typeContributions.contributeType( new GeolatteGeometryType( sdoGeometryTypeDescriptor ) );
 		typeContributions.contributeType( new JTSGeometryType( sdoGeometryTypeDescriptor ) );
+
+		typeContributions.contributeJavaTypeDescriptor( GeolatteGeometryJavaTypeDescriptor.INSTANCE );
+		typeContributions.contributeJavaTypeDescriptor( JTSGeometryJavaTypeDescriptor.INSTANCE );
 	}
 
 	private SDOGeometryTypeDescriptor mkSdoGeometryTypeDescriptor(ServiceRegistry serviceRegistry) {
@@ -93,13 +99,13 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	 */
 	@Override
 	public String getSpatialRelateSQL(String columnName, int spatialRelation) {
-		String sql = getOGCSpatialRelateSQL( columnName, "?", spatialRelation )  + " = 1";
+		String sql = getOGCSpatialRelateSQL( columnName, "?", spatialRelation ) + " = 1";
 		sql += " and " + columnName + " is not null";
 		return sql;
 	}
 
 	public String getOGCSpatialRelateSQL(String arg1, String arg2, int spatialRelation) {
-		final StringBuffer ogcFunction = new StringBuffer( "MDSYS." );
+		final StringBuilder ogcFunction = new StringBuilder( "MDSYS." );
 		switch ( spatialRelation ) {
 			case SpatialRelation.INTERSECTS:
 				ogcFunction.append( "OGC_INTERSECTS" );
@@ -154,7 +160,7 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	 * @return SQL fragment  {@code SpatialRelateExpression}
 	 */
 	public String getSDOSpatialRelateSQL(String columnName, int spatialRelation) {
-		String sql = getNativeSpatialRelateSQL( columnName, "?", spatialRelation )  + " = 1";
+		String sql = getNativeSpatialRelateSQL( columnName, "?", spatialRelation ) + " = 1";
 		sql += " and " + columnName + " is not null";
 		return sql;
 	}
@@ -222,7 +228,7 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	 */
 	@Override
 	public String getSpatialFilterExpression(String columnName) {
-		final StringBuffer buffer = new StringBuffer( "SDO_FILTER(" );
+		final StringBuilder buffer = new StringBuilder( "SDO_FILTER(" );
 		buffer.append( columnName );
 		buffer.append( ",?) = 'TRUE' " );
 		return buffer.toString();
@@ -238,7 +244,7 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	 */
 	@Override
 	public String getSpatialAggregateSQL(String columnName, int aggregation) {
-		final StringBuffer aggregateFunction = new StringBuffer();
+		final StringBuilder aggregateFunction = new StringBuilder();
 		final SpatialAggregate sa = new SpatialAggregate( aggregation );
 
 		if ( sa.getAggregateSyntax() == null ) {
@@ -255,7 +261,7 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 			aggregateFunction.append( "SDOAGGRTYPE(" );
 		}
 		aggregateFunction.append( columnName );
-		// TODO tolerance must by configurable
+		// Can we make tolerance configurable
 		if ( sa.isAggregateType() ) {
 			aggregateFunction.append( ", " ).append( .001 ).append( ")" );
 		}
@@ -277,15 +283,15 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	}
 
 	/**
-	 * Returns the SQL fragment when parsing an <code>HavingSridExpression</code>.
+	 * Returns the SQL fragment when parsing a <code>HavingSridExpression</code>.
 	 *
 	 * @param columnName The geometry column to test against
 	 *
-	 * @return The SQL fragment for an <code>HavingSridExpression</code>.
+	 * @return The SQL fragment for a <code>HavingSridExpression</code>.
 	 */
 	@Override
 	public String getHavingSridSQL(String columnName) {
-		return String.format( " (MDSYS.ST_GEOMETRY(%s).ST_SRID() = ?)", columnName );
+		return String.format( Locale.ENGLISH, " (MDSYS.ST_GEOMETRY(%s).ST_SRID() = ?)", columnName );
 	}
 
 	/**
@@ -299,7 +305,12 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	 */
 	@Override
 	public String getIsEmptySQL(String columnName, boolean isEmpty) {
-		return String.format( "( MDSYS.ST_GEOMETRY(%s).ST_ISEMPTY() = %d )", columnName, isEmpty ? 1 : 0 );
+		return String.format(
+				Locale.ENGLISH,
+				"( MDSYS.ST_GEOMETRY(%s).ST_ISEMPTY() = %d )",
+				columnName,
+				isEmpty ? 1 : 0
+		);
 	}
 
 	/**
@@ -326,4 +337,8 @@ class OracleSDOSupport implements SpatialDialect, Serializable {
 	}
 
 
+	@Override
+	public String filterExpression(String geometryParam, String filterParam) {
+		return SpatialFunction.filter.name() + "(" + geometryParam + ", " + filterParam + ") = 'TRUE' ";
+	}
 }

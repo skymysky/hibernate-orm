@@ -31,10 +31,7 @@ import org.hibernate.StatelessSession;
 import org.hibernate.StatelessSessionBuilder;
 import org.hibernate.TypeHelper;
 import org.hibernate.boot.spi.SessionFactoryOptions;
-import org.hibernate.cache.spi.QueryCache;
-import org.hibernate.cache.spi.Region;
-import org.hibernate.cache.spi.UpdateTimestampsCache;
-import org.hibernate.cache.spi.access.RegionAccessStrategy;
+import org.hibernate.cache.spi.CacheImplementor;
 import org.hibernate.cfg.Settings;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.hibernate.dialect.Dialect;
@@ -44,9 +41,12 @@ import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.jdbc.spi.SqlExceptionHelper;
 import org.hibernate.engine.profile.FetchProfile;
 import org.hibernate.engine.query.spi.QueryPlanCache;
+import org.hibernate.event.spi.EventEngine;
 import org.hibernate.exception.spi.SQLExceptionConverter;
+import org.hibernate.graph.spi.RootGraphImplementor;
 import org.hibernate.id.IdentifierGenerator;
 import org.hibernate.id.factory.IdentifierGeneratorFactory;
+import org.hibernate.internal.FastSessionServices;
 import org.hibernate.metadata.ClassMetadata;
 import org.hibernate.metadata.CollectionMetadata;
 import org.hibernate.metamodel.spi.MetamodelImplementor;
@@ -143,6 +143,11 @@ public class SessionFactoryDelegatingImpl implements SessionFactoryImplementor, 
 	}
 
 	@Override
+	public EventEngine getEventEngine() {
+		return delegate.getEventEngine();
+	}
+
+	@Override
 	public void close() throws HibernateException {
 		delegate.close();
 	}
@@ -197,7 +202,14 @@ public class SessionFactoryDelegatingImpl implements SessionFactoryImplementor, 
 		return delegate.getTypeHelper();
 	}
 
-	@Override
+	/**
+	 * Retrieve the {@link Type} resolver associated with this factory.
+	 *
+	 * @return The type resolver
+	 *
+	 * @deprecated (since 5.3) No replacement, access to and handling of Types will be much different in 6.0
+	 */
+	@Deprecated
 	public TypeResolver getTypeResolver() {
 		return delegate.getTypeResolver();
 	}
@@ -268,28 +280,13 @@ public class SessionFactoryDelegatingImpl implements SessionFactoryImplementor, 
 	}
 
 	@Override
-	public EntityGraph findEntityGraphByName(String name) {
+	public RootGraphImplementor findEntityGraphByName(String name) {
 		return delegate.findEntityGraphByName( name );
 	}
 
 	@Override
-	public QueryCache getQueryCache() {
-		return delegate.getQueryCache();
-	}
-
-	@Override
-	public QueryCache getQueryCache(String regionName) throws HibernateException {
-		return delegate.getQueryCache( regionName );
-	}
-
-	@Override
-	public UpdateTimestampsCache getUpdateTimestampsCache() {
-		return delegate.getUpdateTimestampsCache();
-	}
-
-	@Override
 	public StatisticsImplementor getStatisticsImplementor() {
-		return delegate.getStatisticsImplementor();
+		return delegate.getStatistics();
 	}
 
 	@Override
@@ -320,31 +317,6 @@ public class SessionFactoryDelegatingImpl implements SessionFactoryImplementor, 
 	@Override
 	public IdentifierGenerator getIdentifierGenerator(String rootEntityName) {
 		return delegate.getIdentifierGenerator( rootEntityName );
-	}
-
-	@Override
-	public Region getSecondLevelCacheRegion(String regionName) {
-		return delegate.getSecondLevelCacheRegion( regionName );
-	}
-
-	@Override
-	public RegionAccessStrategy getSecondLevelCacheRegionAccessStrategy(String regionName) {
-		return delegate.getSecondLevelCacheRegionAccessStrategy(regionName);
-	}
-
-	@Override
-	public Region getNaturalIdCacheRegion(String regionName) {
-		return delegate.getNaturalIdCacheRegion( regionName );
-	}
-
-	@Override
-	public RegionAccessStrategy getNaturalIdCacheRegionAccessStrategy(String regionName) {
-		return delegate.getNaturalIdCacheRegionAccessStrategy(regionName);
-	}
-
-	@Override
-	public Map getAllSecondLevelCacheRegions() {
-		return delegate.getAllSecondLevelCacheRegions();
 	}
 
 	@Override
@@ -418,6 +390,11 @@ public class SessionFactoryDelegatingImpl implements SessionFactoryImplementor, 
 	}
 
 	@Override
+	public FastSessionServices getFastSessionServices() {
+		return delegate.getFastSessionServices();
+	}
+
+	@Override
 	public EntityPersister locateEntityPersister(Class byClass) {
 		return delegate.locateEntityPersister( byClass );
 	}
@@ -468,8 +445,8 @@ public class SessionFactoryDelegatingImpl implements SessionFactoryImplementor, 
 	}
 
 	@Override
-	public <T> List<EntityGraph<? super T>> findEntityGraphsByType(Class<T> entityClass) {
-		return delegate.findEntityGraphsByType( entityClass );
+	public <T> List<RootGraphImplementor<? super T>> findEntityGraphsByJavaType(Class<T> entityClass) {
+		return delegate.findEntityGraphsByJavaType( entityClass );
 	}
 
 	@Override

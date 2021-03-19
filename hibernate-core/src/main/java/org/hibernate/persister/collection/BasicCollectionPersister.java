@@ -17,7 +17,7 @@ import java.util.Set;
 import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
 import org.hibernate.cache.CacheException;
-import org.hibernate.cache.spi.access.CollectionRegionAccessStrategy;
+import org.hibernate.cache.spi.access.CollectionDataAccess;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.jdbc.batch.internal.BasicBatchKey;
 import org.hibernate.engine.spi.LoadQueryInfluencers;
@@ -54,7 +54,7 @@ public class BasicCollectionPersister extends AbstractCollectionPersister {
 
 	public BasicCollectionPersister(
 			Collection collectionBinding,
-			CollectionRegionAccessStrategy cacheAccessStrategy,
+			CollectionDataAccess cacheAccessStrategy,
 			PersisterCreationContext creationContext) throws MappingException, CacheException {
 		super( collectionBinding, cacheAccessStrategy, creationContext );
 	}
@@ -64,8 +64,7 @@ public class BasicCollectionPersister extends AbstractCollectionPersister {
 	 */
 	@Override
 	protected String generateDeleteString() {
-		final Delete delete = new Delete()
-				.setTableName( qualifiedTableName )
+		final Delete delete = createDelete().setTableName( qualifiedTableName )
 				.addPrimaryKeyColumns( keyColumnNames );
 
 		if ( hasWhere ) {
@@ -84,8 +83,7 @@ public class BasicCollectionPersister extends AbstractCollectionPersister {
 	 */
 	@Override
 	protected String generateInsertRowString() {
-		final Insert insert = new Insert( getDialect() )
-				.setTableName( qualifiedTableName )
+		final Insert insert = createInsert().setTableName( qualifiedTableName )
 				.addColumns( keyColumnNames );
 
 		if ( hasIdentifier ) {
@@ -112,8 +110,7 @@ public class BasicCollectionPersister extends AbstractCollectionPersister {
 	 */
 	@Override
 	protected String generateUpdateRowString() {
-		final Update update = new Update( getDialect() )
-				.setTableName( qualifiedTableName );
+		final Update update = createUpdate().setTableName( qualifiedTableName );
 
 		//if ( !elementIsFormula ) {
 		update.addColumns( elementColumnNames, elementColumnIsSettable, elementColumnWriters );
@@ -147,7 +144,7 @@ public class BasicCollectionPersister extends AbstractCollectionPersister {
 	 */
 	@Override
 	protected String generateDeleteRowString() {
-		final Delete delete = new Delete().setTableName( qualifiedTableName );
+		final Delete delete = createDelete().setTableName( qualifiedTableName );
 
 		if ( hasIdentifier ) {
 			delete.addPrimaryKeyColumns( new String[] {identifierColumnName} );
@@ -312,7 +309,7 @@ public class BasicCollectionPersister extends AbstractCollectionPersister {
 					expectation.verifyOutcome(
 							session.getJdbcCoordinator().getResultSetReturn().executeUpdate(
 									st
-							), st, -1
+							), st, -1, sql
 					);
 				}
 			}

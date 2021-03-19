@@ -26,7 +26,6 @@ import org.hibernate.annotations.MapKeyType;
 import org.hibernate.annotations.Nationalized;
 import org.hibernate.annotations.Parameter;
 import org.hibernate.annotations.Type;
-import org.hibernate.annotations.common.reflection.ClassLoadingException;
 import org.hibernate.annotations.common.reflection.XClass;
 import org.hibernate.annotations.common.reflection.XProperty;
 import org.hibernate.boot.model.TypeDefinition;
@@ -177,10 +176,10 @@ public class SimpleValueBinder {
 				|| ( key && property.isAnnotationPresent( MapKeyTemporal.class ) ) ) {
 
 			boolean isDate;
-			if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, Date.class ) ) {
+			if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, Date.class ) ) {
 				isDate = true;
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, Calendar.class ) ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, Calendar.class ) ) {
 				isDate = false;
 			}
 			else {
@@ -213,39 +212,39 @@ public class SimpleValueBinder {
 		}
 		else if ( !key && property.isAnnotationPresent( Lob.class ) ) {
 			isLob = true;
-			if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, java.sql.Clob.class ) ) {
+			if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, java.sql.Clob.class ) ) {
 				type = isNationalized
 						? StandardBasicTypes.NCLOB.getName()
 						: StandardBasicTypes.CLOB.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, java.sql.NClob.class ) ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, java.sql.NClob.class ) ) {
 				type = StandardBasicTypes.NCLOB.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, java.sql.Blob.class ) ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, java.sql.Blob.class ) ) {
 				type = "blob";
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, String.class ) ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, String.class ) ) {
 				type = isNationalized
 						? StandardBasicTypes.MATERIALIZED_NCLOB.getName()
 						: StandardBasicTypes.MATERIALIZED_CLOB.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, Character.class ) && isArray ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, Character.class ) && isArray ) {
 				type = isNationalized
 						? CharacterArrayNClobType.class.getName()
 						: CharacterArrayClobType.class.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, char.class ) && isArray ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, char.class ) && isArray ) {
 				type = isNationalized
 						? PrimitiveCharacterArrayNClobType.class.getName()
 						: PrimitiveCharacterArrayClobType.class.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, Byte.class ) && isArray ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, Byte.class ) && isArray ) {
 				type = WrappedMaterializedBlobType.class.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, byte.class ) && isArray ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, byte.class ) && isArray ) {
 				type = StandardBasicTypes.MATERIALIZED_BLOB.getName();
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager()
+			else if ( buildingContext.getBootstrapContext().getReflectionManager()
 					.toXClass( Serializable.class )
 					.isAssignableFrom( returnedClassOrElement ) ) {
 				type = SerializableToBlobType.class.getName();
@@ -261,7 +260,7 @@ public class SimpleValueBinder {
 		}
 		else if ( ( !key && property.isAnnotationPresent( Enumerated.class ) )
 				|| ( key && property.isAnnotationPresent( MapKeyEnumerated.class ) ) ) {
-			final Class attributeJavaType = buildingContext.getBuildingOptions().getReflectionManager().toClass( returnedClassOrElement );
+			final Class attributeJavaType = buildingContext.getBootstrapContext().getReflectionManager().toClass( returnedClassOrElement );
 			if ( !Enum.class.isAssignableFrom( attributeJavaType ) ) {
 				throw new AnnotationException(
 						String.format(
@@ -276,13 +275,13 @@ public class SimpleValueBinder {
 			explicitType = type;
 		}
 		else if ( isNationalized ) {
-			if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, String.class ) ) {
+			if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, String.class ) ) {
 				// nvarchar
 				type = StringNVarcharType.INSTANCE.getName();
 				explicitType = type;
 			}
-			else if ( buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, Character.class ) ||
-					buildingContext.getBuildingOptions().getReflectionManager().equals( returnedClassOrElement, char.class ) ) {
+			else if ( buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, Character.class ) ||
+					buildingContext.getBootstrapContext().getReflectionManager().equals( returnedClassOrElement, char.class ) ) {
 				if ( isArray ) {
 					// nvarchar
 					type = StringNVarcharType.INSTANCE.getName();
@@ -384,7 +383,7 @@ public class SimpleValueBinder {
 		this.explicitType = explicitType;
 	}
 
-	//FIXME raise an assertion failure  if setResolvedTypeMapping(String) and setResolvedTypeMapping(Type) are use at the same time
+	//FIXME raise an assertion failure  if setResolvedTypeMapping(String) and setResolvedTypeMapping(Type) are used at the same time
 
 	public void setExplicitType(Type typeAnn) {
 		if ( typeAnn != null ) {
@@ -412,7 +411,7 @@ public class SimpleValueBinder {
 		if ( table == null ) {
 			table = columns[0].getTable();
 		}
-		simpleValue = new SimpleValue( buildingContext.getMetadataCollector(), table );
+		simpleValue = new SimpleValue( buildingContext, table );
 		if ( isVersion ) {
 			simpleValue.makeVersion();
 		}
@@ -454,7 +453,7 @@ public class SimpleValueBinder {
 
 	public void fillSimpleValue() {
 		LOG.debugf( "Starting fillSimpleValue for %s", propertyName );
-                
+
 		if ( attributeConverterDescriptor != null ) {
 			if ( ! BinderHelper.isEmptyAnnotationValue( explicitType ) ) {
 				throw new AnnotationException(
@@ -500,7 +499,7 @@ public class SimpleValueBinder {
 				simpleValue.setTypeParameters( typeDef.getParametersAsProperties() );
 			}
 			if ( typeParameters != null && typeParameters.size() != 0 ) {
-				//explicit type params takes precedence over type def params
+				//explicit type params take precedence over type def params
 				simpleValue.setTypeParameters( typeParameters );
 			}
 			simpleValue.setTypeName( type );
@@ -531,30 +530,25 @@ public class SimpleValueBinder {
 		if ( timeStampVersionType != null ) {
 			simpleValue.setTypeName( timeStampVersionType );
 		}
-		
+
 		if ( simpleValue.getTypeName() != null && simpleValue.getTypeName().length() > 0
 				&& simpleValue.getMetadata().getTypeResolver().basic( simpleValue.getTypeName() ) == null ) {
-			try {
-				Class typeClass = buildingContext.getClassLoaderAccess().classForName( simpleValue.getTypeName() );
+			Class typeClass = buildingContext.getBootstrapContext().getClassLoaderAccess().classForName( simpleValue.getTypeName() );
 
-				if ( typeClass != null && DynamicParameterizedType.class.isAssignableFrom( typeClass ) ) {
-					Properties parameters = simpleValue.getTypeParameters();
-					if ( parameters == null ) {
-						parameters = new Properties();
-					}
-					parameters.put( DynamicParameterizedType.IS_DYNAMIC, Boolean.toString( true ) );
-					parameters.put( DynamicParameterizedType.RETURNED_CLASS, returnedClassName );
-					parameters.put( DynamicParameterizedType.IS_PRIMARY_KEY, Boolean.toString( key ) );
-
-					parameters.put( DynamicParameterizedType.ENTITY, persistentClassName );
-					parameters.put( DynamicParameterizedType.XPROPERTY, xproperty );
-					parameters.put( DynamicParameterizedType.PROPERTY, xproperty.getName() );
-					parameters.put( DynamicParameterizedType.ACCESS_TYPE, accessType.getType() );
-					simpleValue.setTypeParameters( parameters );
+			if ( typeClass != null && DynamicParameterizedType.class.isAssignableFrom( typeClass ) ) {
+				Properties parameters = simpleValue.getTypeParameters();
+				if ( parameters == null ) {
+					parameters = new Properties();
 				}
-			}
-			catch (ClassLoadingException e) {
-				throw new MappingException( "Could not determine type for: " + simpleValue.getTypeName(), e );
+				parameters.put( DynamicParameterizedType.IS_DYNAMIC, Boolean.toString( true ) );
+				parameters.put( DynamicParameterizedType.RETURNED_CLASS, returnedClassName );
+				parameters.put( DynamicParameterizedType.IS_PRIMARY_KEY, Boolean.toString( key ) );
+
+				parameters.put( DynamicParameterizedType.ENTITY, persistentClassName );
+				parameters.put( DynamicParameterizedType.XPROPERTY, xproperty );
+				parameters.put( DynamicParameterizedType.PROPERTY, xproperty.getName() );
+				parameters.put( DynamicParameterizedType.ACCESS_TYPE, accessType.getType() );
+				simpleValue.setTypeParameters( parameters );
 			}
 		}
 

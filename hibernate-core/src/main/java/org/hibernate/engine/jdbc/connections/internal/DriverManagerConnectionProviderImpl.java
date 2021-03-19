@@ -14,7 +14,10 @@ import java.util.Properties;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.hibernate.HibernateException;
 import org.hibernate.boot.registry.classloading.spi.ClassLoaderService;
@@ -44,7 +47,7 @@ import org.hibernate.service.spi.Stoppable;
  * @author Steve Ebersole
  */
 public class DriverManagerConnectionProviderImpl
-		implements ConnectionProvider, Configurable, Stoppable, ServiceRegistryAwareService {
+		implements ConnectionProvider, Configurable, Stoppable, ServiceRegistryAwareService, ConnectionValidator {
 
 	private static final ConnectionPoolingLogger log = ConnectionPoolingLogger.CONNECTIONS_LOGGER;
 
@@ -53,15 +56,11 @@ public class DriverManagerConnectionProviderImpl
 	// in TimeUnit.SECONDS
 	public static final String VALIDATION_INTERVAL = "hibernate.connection.pool_validation_interval";
 
-	private boolean active = true;
-
-	private ScheduledExecutorService executorService;
-	private PooledConnections pool;
-
+	private volatile PoolState state;
 
 	// create the pool ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-	private ServiceRegistryImplementor serviceRegistry;
+	private volatile ServiceRegistryImplementor serviceRegistry;
 
 	@Override
 	public void injectServices(ServiceRegistryImplementor serviceRegistry) {
@@ -71,26 +70,13 @@ public class DriverManagerConnectionProviderImpl
 	@Override
 	public void configure(Map configurationValues) {
 		log.usingHibernateBuiltInConnectionPool();
-
-		pool = buildPool( configurationValues );
-
+		PooledConnections pool = buildPool( configurationValues, serviceRegistry );
 		final long validationInterval = ConfigurationHelper.getLong( VALIDATION_INTERVAL, configurationValues, 30 );
-		executorService = Executors.newSingleThreadScheduledExecutor();
-		executorService.scheduleWithFixedDelay(
-				new Runnable() {
-					private boolean primed;
-					@Override
-					public void run() {
-						pool.validate();
-					}
-				},
-				validationInterval,
-				validationInterval,
-				TimeUnit.SECONDS
-		);
+		PoolState newstate = new PoolState( pool, validationInterval );
+		this.state = newstate;
 	}
 
-	private PooledConnections buildPool(Map configurationValues) {
+	private PooledConnections buildPool(Map configurationValues, ServiceRegistryImplementor serviceRegistry) {
 		final boolean autoCommit = ConfigurationHelper.getBoolean(
 				AvailableSettings.AUTOCOMMIT,
 				configurationValues,
@@ -100,7 +86,7 @@ public class DriverManagerConnectionProviderImpl
 		final int maxSize = ConfigurationHelper.getInt( AvailableSettings.POOL_SIZE, configurationValues, 20 );
 		final int initialSize = ConfigurationHelper.getInt( INITIAL_SIZE, configurationValues, minSize );
 
-		ConnectionCreator connectionCreator = buildCreator( configurationValues );
+		ConnectionCreator connectionCreator = buildCreator( configurationValues, serviceRegistry );
 		PooledConnections.Builder pooledConnectionBuilder = new PooledConnections.Builder(
 				connectionCreator,
 				autoCommit
@@ -108,15 +94,15 @@ public class DriverManagerConnectionProviderImpl
 		pooledConnectionBuilder.initialSize( initialSize );
 		pooledConnectionBuilder.minSize( minSize );
 		pooledConnectionBuilder.maxSize( maxSize );
-
+		pooledConnectionBuilder.validator( this );
 		return pooledConnectionBuilder.build();
 	}
 
-	private ConnectionCreator buildCreator(Map configurationValues) {
+	private static ConnectionCreator buildCreator(Map configurationValues, ServiceRegistryImplementor serviceRegistry) {
 		final ConnectionCreatorBuilder connectionCreatorBuilder = new ConnectionCreatorBuilder( serviceRegistry );
 
 		final String driverClassName = (String) configurationValues.get( AvailableSettings.DRIVER );
-		connectionCreatorBuilder.setDriver( loadDriverIfPossible( driverClassName ) );
+		connectionCreatorBuilder.setDriver( loadDriverIfPossible( driverClassName, serviceRegistry ) );
 
 		final String url = (String) configurationValues.get( AvailableSettings.URL );
 		if ( url == null ) {
@@ -152,7 +138,7 @@ public class DriverManagerConnectionProviderImpl
 		return connectionCreatorBuilder.build();
 	}
 
-	private Driver loadDriverIfPossible(String driverClassName) {
+	private static Driver loadDriverIfPossible(String driverClassName, ServiceRegistryImplementor serviceRegistry) {
 		if ( driverClassName == null ) {
 			log.debug( "No driver class specified" );
 			return null;
@@ -182,20 +168,18 @@ public class DriverManagerConnectionProviderImpl
 
 	@Override
 	public Connection getConnection() throws SQLException {
-		if ( !active ) {
-			throw new HibernateException( "Connection pool is no longer active" );
+		if ( state == null ) {
+			throw new IllegalStateException( "Cannot get a connection as the driver manager is not properly initialized" );
 		}
-
-		return pool.poll();
+		return state.getConnection();
 	}
 
 	@Override
 	public void closeConnection(Connection conn) throws SQLException {
-		if (conn == null) {
-			return;
+		if ( state == null ) {
+			throw new IllegalStateException( "Cannot close a connection as the driver manager is not properly initialized" );
 		}
-
-		pool.add( conn );
+		state.closeConnection( conn );
 	}
 
 	@Override
@@ -221,41 +205,46 @@ public class DriverManagerConnectionProviderImpl
 		}
 	}
 
+	protected void validateConnectionsReturned() {
+		int allocationCount = state.pool.allConnections.size() - state.pool.availableConnections.size();
+		if ( allocationCount != 0 ) {
+			log.error( "Connection leak detected: there are " + allocationCount + " unclosed connections!");
+		}
+	}
 
 	// destroy the pool ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	@Override
 	public void stop() {
-		if ( !active ) {
-			return;
-		}
-
-		log.cleaningUpConnectionPool( pool.getUrl() );
-
-		active = false;
-
-		if ( executorService != null ) {
-			executorService.shutdown();
-		}
-		executorService = null;
-
-		try {
-			pool.close();
-		}
-		catch (SQLException e) {
-			log.unableToClosePooledConnection( e );
+		if ( state != null ) {
+			state.stop();
+			validateConnectionsReturned();
 		}
 	}
 
 	//CHECKSTYLE:START_ALLOW_FINALIZER
 	@Override
 	protected void finalize() throws Throwable {
-		if ( active ) {
-			stop();
+		if ( state != null ) {
+			state.stop();
 		}
 		super.finalize();
 	}
 	//CHECKSTYLE:END_ALLOW_FINALIZER
+
+	/**
+	 * Exposed to facilitate testing only.
+	 * @return
+	 */
+	public Properties getConnectionProperties() {
+		BasicConnectionCreator connectionCreator = (BasicConnectionCreator) this.state.pool.connectionCreator;
+		return connectionCreator.getConnectionProperties();
+	}
+
+	@Override
+	public boolean isValid(Connection connection) throws SQLException {
+		return true;
+	}
 
 	public static class PooledConnections {
 
@@ -265,16 +254,20 @@ public class DriverManagerConnectionProviderImpl
 		private static final CoreMessageLogger log = CoreLogging.messageLogger( DriverManagerConnectionProviderImpl.class );
 
 		private final ConnectionCreator connectionCreator;
+		private final ConnectionValidator connectionValidator;
 		private final boolean autoCommit;
 		private final int minSize;
 		private final int maxSize;
 
-		private boolean primed;
+		private volatile boolean primed;
 
 		private PooledConnections(
 				Builder builder) {
 			log.debugf( "Initializing Connection pool with %s Connections", builder.initialSize );
 			connectionCreator = builder.connectionCreator;
+			connectionValidator = builder.connectionValidator == null
+					? ConnectionValidator.ALWAYS_VALID
+					: builder.connectionValidator;
 			autoCommit = builder.autoCommit;
 			maxSize = builder.maxSize;
 			minSize = builder.minSize;
@@ -305,24 +298,77 @@ public class DriverManagerConnectionProviderImpl
 		}
 
 		public void add(Connection conn) throws SQLException {
-			conn.setAutoCommit( true );
-			conn.clearWarnings();
-			availableConnections.offer( conn );
+			final Connection connection = releaseConnection( conn );
+			if ( connection != null ) {
+				availableConnections.offer( connection );
+			}
+		}
+
+		protected Connection releaseConnection(Connection conn) {
+			Exception t = null;
+			try {
+				conn.setAutoCommit( true );
+				conn.clearWarnings();
+				if ( connectionValidator.isValid( conn ) ) {
+					return conn;
+				}
+			}
+			catch (SQLException ex) {
+				t = ex;
+			}
+			closeConnection( conn, t );
+			log.debug( "Connection release failed. Closing pooled connection", t );
+			return null;
 		}
 
 		public Connection poll() throws SQLException {
-			Connection conn = availableConnections.poll();
-			if ( conn == null ) {
-				synchronized (allConnections) {
-					if(allConnections.size() < maxSize) {
-						addConnections( 1 );
-						return poll();
+			Connection conn;
+			do {
+				conn = availableConnections.poll();
+				if ( conn == null ) {
+					synchronized (allConnections) {
+						if ( allConnections.size() < maxSize ) {
+							addConnections( 1 );
+							return poll();
+						}
 					}
+					throw new HibernateException(
+							"The internal connection pool has reached its maximum size and no connection is currently available!" );
 				}
-				throw new HibernateException( "The internal connection pool has reached its maximum size and no connection is currently available!" );
-			}
-			conn.setAutoCommit( autoCommit );
+				conn = prepareConnection( conn );
+			} while ( conn == null );
 			return conn;
+		}
+
+		protected Connection prepareConnection(Connection conn) {
+			Exception t = null;
+			try {
+				conn.setAutoCommit( autoCommit );
+				if ( connectionValidator.isValid( conn ) ) {
+					return conn;
+				}
+			}
+			catch (SQLException ex) {
+				t = ex;
+			}
+			closeConnection( conn, t );
+			log.debug( "Connection preparation failed. Closing pooled connection", t );
+			return null;
+		}
+
+		protected void closeConnection(Connection conn, Throwable t) {
+			try {
+				conn.close();
+			}
+			catch (SQLException ex) {
+				log.unableToCloseConnection( ex );
+				if ( t != null ) {
+					t.addSuppressed( ex );
+				}
+			}
+			finally {
+				allConnections.remove( conn );
+			}
 		}
 
 		public void close() throws SQLException {
@@ -372,6 +418,7 @@ public class DriverManagerConnectionProviderImpl
 
 		public static class Builder {
 			private final ConnectionCreator connectionCreator;
+			private ConnectionValidator connectionValidator;
 			private boolean autoCommit;
 			private int initialSize = 1;
 			private int minSize = 1;
@@ -397,9 +444,114 @@ public class DriverManagerConnectionProviderImpl
 				return this;
 			}
 
+			public Builder validator(ConnectionValidator connectionValidator) {
+				this.connectionValidator = connectionValidator;
+				return this;
+			}
+
 			public PooledConnections build() {
 				return new PooledConnections( this );
 			}
 		}
 	}
+
+	private static class PoolState {
+
+		//Protecting any lifecycle state change:
+		private final ReadWriteLock statelock = new ReentrantReadWriteLock();
+		private volatile boolean active = false;
+		private ScheduledExecutorService executorService;
+
+		private final PooledConnections pool;
+		private final long validationInterval;
+
+		public PoolState(PooledConnections pool, long validationInterval) {
+			this.pool = pool;
+			this.validationInterval = validationInterval;
+		}
+
+		private void startIfNeeded() {
+			if ( active ) {
+				return;
+			}
+			statelock.writeLock().lock();
+			try {
+				if ( active ) {
+					return;
+				}
+				executorService = Executors.newSingleThreadScheduledExecutor( new ValidationThreadFactory() );
+				executorService.scheduleWithFixedDelay(
+						pool::validate,
+						validationInterval,
+						validationInterval,
+						TimeUnit.SECONDS
+				);
+				active = true;
+			}
+			finally {
+				statelock.writeLock().unlock();
+			}
+		}
+
+		public void stop() {
+			statelock.writeLock().lock();
+			try {
+				if ( !active ) {
+					return;
+				}
+				log.cleaningUpConnectionPool( pool.getUrl() );
+				active = false;
+				if ( executorService != null ) {
+					executorService.shutdown();
+				}
+				executorService = null;
+				try {
+					pool.close();
+				}
+				catch (SQLException e) {
+					log.unableToClosePooledConnection( e );
+				}
+			}
+			finally {
+				statelock.writeLock().unlock();
+			}
+		}
+
+		public Connection getConnection() throws SQLException {
+			startIfNeeded();
+			statelock.readLock().lock();
+			try {
+				return pool.poll();
+			}
+			finally {
+				statelock.readLock().unlock();
+			}
+		}
+
+		public void closeConnection(Connection conn) throws SQLException {
+			if (conn == null) {
+				return;
+			}
+			startIfNeeded();
+			statelock.readLock().lock();
+			try {
+				pool.add( conn );
+			}
+			finally {
+				statelock.readLock().unlock();
+			}
+		}
+	}
+
+	private static class ValidationThreadFactory implements ThreadFactory {
+
+		@Override
+		public Thread newThread(Runnable runnable) {
+			Thread thread = new Thread( runnable );
+			thread.setDaemon( true );
+			thread.setName( "Hibernate Connection Pool Validation Thread" );
+			return thread;
+		}
+	}
+
 }

@@ -8,13 +8,12 @@ package org.hibernate.loader.custom;
 
 import java.util.Map;
 
-import org.hibernate.internal.util.StringHelper;
 import org.hibernate.loader.CollectionAliases;
 import org.hibernate.persister.collection.SQLLoadableCollection;
 
 /**
- * CollectionAliases that uses columnnames instead of generated aliases.
- * Aliases can still be overwritten via <return-property>
+ * CollectionAliases that uses column names instead of generated aliases.
+ * Aliases can still be overwritten via {@code <return-property>}
  *
  * @author Max Rydahl Andersen
  */
@@ -63,7 +62,7 @@ public class ColumnCollectionAliases implements CollectionAliases {
 	}
 
 	/**
-	 * Returns the suffixed result-set column-aliases for the collumns making up the collection's index (map or list).
+	 * Returns the suffixed result-set column-aliases for the columns making up the collection's index (map or list).
 	 *
 	 * @return The index result-set column aliases.
 	 */
@@ -111,7 +110,7 @@ public class ColumnCollectionAliases implements CollectionAliases {
 			return null;
 		}
 
-		return StringHelper.join( ", ", aliases );
+		return String.join( ", ", aliases );
 	}
 
 	private String[] getUserProvidedAliases(String propertyPath, String[] defaultAliases) {

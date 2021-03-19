@@ -21,8 +21,8 @@ import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
 import org.hibernate.MappingException;
 import org.hibernate.bytecode.spi.BytecodeEnhancementMetadata;
-import org.hibernate.cache.spi.access.EntityRegionAccessStrategy;
-import org.hibernate.cache.spi.access.NaturalIdRegionAccessStrategy;
+import org.hibernate.cache.spi.access.EntityDataAccess;
+import org.hibernate.cache.spi.access.NaturalIdDataAccess;
 import org.hibernate.cache.spi.entry.CacheEntry;
 import org.hibernate.cache.spi.entry.CacheEntryStructure;
 import org.hibernate.engine.internal.MutableEntityEntryFactory;
@@ -40,6 +40,7 @@ import org.hibernate.jpa.test.SettingsGenerator;
 import org.hibernate.mapping.Collection;
 import org.hibernate.mapping.PersistentClass;
 import org.hibernate.metadata.ClassMetadata;
+import org.hibernate.metamodel.model.domain.NavigableRole;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.persister.entity.MultiLoadOptions;
@@ -58,7 +59,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * @author Emmanuel Bernard <emmanuel@hibernate.org>
+ * @author <a href="mailto:emmanuel@hibernate.org">Emmanuel Bernard</a>
  */
 public class PersisterClassProviderTest {
 	@Test
@@ -100,8 +101,8 @@ public class PersisterClassProviderTest {
 		@SuppressWarnings( {"UnusedParameters"})
 		public GoofyProvider(
 				org.hibernate.mapping.PersistentClass persistentClass,
-				org.hibernate.cache.spi.access.EntityRegionAccessStrategy strategy,
-				NaturalIdRegionAccessStrategy naturalIdRegionAccessStrategy,
+				EntityDataAccess entityDataAccessstrategy,
+				NaturalIdDataAccess naturalIdRegionAccessStrategy,
 				PersisterCreationContext creationContext) {
 			throw new GoofyException();
 		}
@@ -132,6 +133,11 @@ public class PersisterClassProviderTest {
 
 		@Override
 		public SessionFactoryImplementor getFactory() {
+			return null;
+		}
+
+		@Override
+		public NavigableRole getNavigableRole() {
 			return null;
 		}
 
@@ -240,7 +246,6 @@ public class PersisterClassProviderTest {
 			return false;
 		}
 
-		@Override
 		public Comparator getVersionComparator() {
 			return null;
 		}
@@ -259,7 +264,7 @@ public class PersisterClassProviderTest {
 		public boolean hasNaturalIdentifier() {
 			return false;
 		}
-		
+
         @Override
 		public int[] getNaturalIdentifierProperties() {
 			return new int[0];
@@ -275,14 +280,14 @@ public class PersisterClassProviderTest {
 				SharedSessionContractImplementor session) {
 			return null;
 		}
-		
+
 		@Override
         public boolean hasNaturalIdCache() {
             return false;
         }
 
         @Override
-        public NaturalIdRegionAccessStrategy getNaturalIdCacheAccessStrategy() {
+        public NaturalIdDataAccess getNaturalIdCacheAccessStrategy() {
             return null;
         }
 
@@ -427,7 +432,7 @@ public class PersisterClassProviderTest {
 		}
 
 		@Override
-		public EntityRegionAccessStrategy getCacheAccessStrategy() {
+		public EntityDataAccess getCacheAccessStrategy() {
 			return null;
 		}
 

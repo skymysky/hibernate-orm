@@ -13,6 +13,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 
+import org.hibernate.type.descriptor.ValueBinder;
+import org.hibernate.type.descriptor.ValueExtractor;
+import org.hibernate.type.descriptor.WrapperOptions;
+import org.hibernate.type.descriptor.java.JavaTypeDescriptor;
+import org.hibernate.type.descriptor.sql.BasicBinder;
+import org.hibernate.type.descriptor.sql.BasicExtractor;
+import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
+
 import org.geolatte.geom.ByteBuffer;
 import org.geolatte.geom.ByteOrder;
 import org.geolatte.geom.Geometry;
@@ -23,14 +31,6 @@ import org.geolatte.geom.codec.Wkt;
 import org.geolatte.geom.codec.WktDecoder;
 import org.postgresql.util.PGobject;
 
-import org.hibernate.type.descriptor.ValueBinder;
-import org.hibernate.type.descriptor.ValueExtractor;
-import org.hibernate.type.descriptor.WrapperOptions;
-import org.hibernate.type.descriptor.java.JavaTypeDescriptor;
-import org.hibernate.type.descriptor.sql.BasicBinder;
-import org.hibernate.type.descriptor.sql.BasicExtractor;
-import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
-
 /**
  * Type Descriptor for the Postgis Geometry type
  *
@@ -39,10 +39,43 @@ import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
 public class PGGeometryTypeDescriptor implements SqlTypeDescriptor {
 
 
-	/**
-	 * An instance of this class
-	 */
-	public static final PGGeometryTypeDescriptor INSTANCE = new PGGeometryTypeDescriptor();
+	final private Wkb.Dialect wkbDialect;
+
+	// Type descriptor instance using EWKB v1 (postgis versions < 2.2.2)
+	public static final PGGeometryTypeDescriptor INSTANCE_WKB_1 = new PGGeometryTypeDescriptor( Wkb.Dialect.POSTGIS_EWKB_1);
+	// Type descriptor instance using EWKB v2 (postgis versions >= 2.2.2, see: https://trac.osgeo.org/postgis/ticket/3181)
+	public static final PGGeometryTypeDescriptor INSTANCE_WKB_2 = new PGGeometryTypeDescriptor(Wkb.Dialect.POSTGIS_EWKB_2);
+
+	private PGGeometryTypeDescriptor(Wkb.Dialect dialect) {
+		wkbDialect = dialect;
+	}
+
+	public Geometry<?> toGeometry(Object object) {
+		if ( object == null ) {
+			return null;
+		}
+		ByteBuffer buffer = null;
+		if ( object instanceof PGobject ) {
+			String pgValue = ( (PGobject) object ).getValue();
+
+			if ( pgValue.startsWith( "00" ) || pgValue.startsWith( "01" ) ) {
+				//we have a WKB because this pgValue starts with the bit-order byte
+				buffer = ByteBuffer.from( pgValue );
+				final WkbDecoder decoder = Wkb.newDecoder( wkbDialect );
+				return decoder.decode( buffer );
+			}
+			else {
+				return parseWkt( pgValue );
+			}
+
+		}
+		throw new IllegalStateException( "Received object of type " + object.getClass().getCanonicalName() );
+	}
+
+	private static Geometry<?> parseWkt(String pgValue) {
+		final WktDecoder decoder = Wkt.newDecoder( Wkt.Dialect.POSTGIS_EWKT_1 );
+		return decoder.decode( pgValue );
+	}
 
 	@Override
 	public int getSqlType() {
@@ -104,33 +137,5 @@ public class PGGeometryTypeDescriptor implements SqlTypeDescriptor {
 				return getJavaDescriptor().wrap( toGeometry( statement.getObject( name ) ), options );
 			}
 		};
-	}
-
-	public static Geometry<?> toGeometry(Object object) {
-		if ( object == null ) {
-			return null;
-		}
-		ByteBuffer buffer = null;
-		if ( object instanceof PGobject ) {
-			String pgValue = ((PGobject) object).getValue();
-
-			if ( pgValue.startsWith( "00" ) || pgValue.startsWith( "01" ) ) {
-				//we have a WKB because this pgValue starts with the bit-order byte
-				buffer = ByteBuffer.from( pgValue );
-				final WkbDecoder decoder = Wkb.newDecoder( Wkb.Dialect.POSTGIS_EWKB_1 );
-				return decoder.decode( buffer );
-
-			}
-			else {
-				return parseWkt( pgValue );
-			}
-
-		}
-		throw new IllegalStateException( "Received object of type " + object.getClass().getCanonicalName() );
-	}
-
-	private static Geometry<?> parseWkt(String pgValue) {
-		final WktDecoder decoder = Wkt.newDecoder( Wkt.Dialect.POSTGIS_EWKT_1 );
-		return decoder.decode( pgValue );
 	}
 }

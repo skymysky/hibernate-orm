@@ -9,10 +9,9 @@ package org.hibernate.jpa.event.internal;
 import java.util.HashMap;
 import javax.persistence.PersistenceException;
 
+import org.hibernate.internal.util.collections.ArrayHelper;
 import org.hibernate.jpa.event.spi.Callback;
-import org.hibernate.jpa.event.spi.CallbackRegistry;
 import org.hibernate.jpa.event.spi.CallbackType;
-import org.hibernate.jpa.event.spi.CallbackBuilder;
 
 /**
  * Keep track of all lifecycle callbacks and listeners for a given persistence unit
@@ -21,7 +20,7 @@ import org.hibernate.jpa.event.spi.CallbackBuilder;
  * @author Steve Ebersole
  */
 @SuppressWarnings({"unchecked", "serial"})
-public class CallbackRegistryImpl implements CallbackRegistry, CallbackBuilder.CallbackRegistrar {
+final class CallbackRegistryImpl implements CallbackRegistryImplementor {
 	private HashMap<Class, Callback[]> preCreates = new HashMap<Class, Callback[]>();
 	private HashMap<Class, Callback[]> postCreates = new HashMap<Class, Callback[]>();
 	private HashMap<Class, Callback[]> preRemoves = new HashMap<Class, Callback[]>();
@@ -43,8 +42,10 @@ public class CallbackRegistryImpl implements CallbackRegistry, CallbackBuilder.C
 		}
 
 		final HashMap<Class, Callback[]> map = determineAppropriateCallbackMap( callbacks[0].getCallbackType() );
-		if ( map.containsKey( entityClass ) ) {
-			throw new PersistenceException( "Error build callback listeners; entity [" + entityClass.getName() + " was already processed" );
+		Callback[] entityCallbacks = map.get( entityClass );
+
+		if ( entityCallbacks != null ) {
+			callbacks = ArrayHelper.join( entityCallbacks, callbacks );
 		}
 		map.put( entityClass, callbacks );
 	}

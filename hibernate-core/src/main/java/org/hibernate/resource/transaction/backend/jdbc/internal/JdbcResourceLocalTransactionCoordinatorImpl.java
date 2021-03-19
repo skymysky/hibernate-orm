@@ -7,16 +7,16 @@
 package org.hibernate.resource.transaction.backend.jdbc.internal;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import javax.persistence.RollbackException;
 import javax.transaction.Status;
 
-import org.hibernate.TransactionException;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.transaction.spi.IsolationDelegate;
 import org.hibernate.engine.transaction.spi.TransactionObserver;
 import org.hibernate.internal.CoreMessageLogger;
-import org.hibernate.jpa.JpaCompliance;
+import org.hibernate.jpa.spi.JpaCompliance;
 import org.hibernate.resource.jdbc.spi.JdbcSessionOwner;
 import org.hibernate.resource.transaction.backend.jdbc.spi.JdbcResourceTransaction;
 import org.hibernate.resource.transaction.backend.jdbc.spi.JdbcResourceTransactionAccess;
@@ -51,7 +51,7 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 
 	private int timeOut = -1;
 
-	private final transient List<TransactionObserver> observers;
+	private transient List<TransactionObserver> observers = null;
 
 	/**
 	 * Construct a ResourceLocalTransactionCoordinatorImpl instance.  package-protected to ensure access goes through
@@ -63,7 +63,6 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 			TransactionCoordinatorBuilder transactionCoordinatorBuilder,
 			TransactionCoordinatorOwner owner,
 			JdbcResourceTransactionAccess jdbcResourceTransactionAccess) {
-		this.observers = new ArrayList<>();
 		this.transactionCoordinatorBuilder = transactionCoordinatorBuilder;
 		this.jdbcResourceTransactionAccess = jdbcResourceTransactionAccess;
 		this.transactionCoordinatorOwner = owner;
@@ -82,7 +81,12 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 	 * @return TransactionObserver
 	 */
 	private Iterable<TransactionObserver> observers() {
-		return new ArrayList<>( observers );
+		if ( observers == null || observers.isEmpty() ) {
+			return Collections.emptyList();
+		}
+		else {
+			return new ArrayList<>( observers );
+		}
 	}
 
 	@Override
@@ -158,7 +162,15 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 		if(this.timeOut > 0) {
 			transactionCoordinatorOwner.setTransactionTimeOut( this.timeOut );
 		}
+
+
+		// report entering into a "transactional context"
+		transactionCoordinatorOwner.startTransactionBoundary();
+
+		// trigger the Transaction-API-only after-begin callback
 		transactionCoordinatorOwner.afterTransactionBegin();
+
+		// notify all registered observers
 		for ( TransactionObserver observer : observers() ) {
 			observer.afterBegin();
 		}
@@ -196,12 +208,17 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 
 	@Override
 	public void addObserver(TransactionObserver observer) {
+		if ( observers == null ) {
+			observers = new ArrayList<>( 6 );
+		}
 		observers.add( observer );
 	}
 
 	@Override
 	public void removeObserver(TransactionObserver observer) {
-		observers.remove( observer );
+		if ( observers != null ) {
+			observers.remove( observer );
+		}
 	}
 
 	/**
@@ -273,7 +290,7 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 					rollback();
 				}
 				catch (RuntimeException e2) {
-					log.debug( "Encountered failure rolling back failed commit", e2 );;
+					log.debug( "Encountered failure rolling back failed commit", e2 );
 				}
 				throw e;
 			}
@@ -281,10 +298,15 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 
 		@Override
 		public void rollback() {
-			if ( rollbackOnly || getStatus() == TransactionStatus.ACTIVE ) {
+			try {
+				TransactionStatus status = jdbcResourceTransaction.getStatus();
+				if ( ( rollbackOnly && status != TransactionStatus.NOT_ACTIVE ) || status == TransactionStatus.ACTIVE ) {
+					jdbcResourceTransaction.rollback();
+					JdbcResourceLocalTransactionCoordinatorImpl.this.afterCompletionCallback( false );
+				}
+			}
+			finally {
 				rollbackOnly = false;
-				jdbcResourceTransaction.rollback();
-				JdbcResourceLocalTransactionCoordinatorImpl.this.afterCompletionCallback( false );
 			}
 
 			// no-op otherwise.

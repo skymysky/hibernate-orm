@@ -13,13 +13,13 @@ import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.jpa.event.spi.JpaIntegrator;
 import org.hibernate.jpa.event.spi.jpa.ExtendedBeanManager;
 import org.hibernate.tool.schema.Action;
 
 import org.hibernate.testing.junit4.BaseUnitTestCase;
 import org.hibernate.test.cdi.events.Monitor;
 import org.hibernate.test.cdi.events.TheEntity;
+import org.hibernate.test.cdi.testsupport.TestingExtendedBeanManager;
 import org.junit.Test;
 
 import static org.hibernate.testing.transaction.TransactionUtil2.inTransaction;
@@ -35,18 +35,27 @@ import static org.junit.Assert.fail;
  */
 public class InvalidExtendedCdiSupportTest extends BaseUnitTestCase {
 	@Test
-	public void testIt() {
+	public void test() {
+		doTest( TestingExtendedBeanManager.create() );
+	}
+
+	/**
+	 * NOTE : we use the deprecated one here to make sure this continues to work.
+	 * Scott still uses this in WildFly and we need it to continue to work there
+	 */
+	@Test
+	public void testLegacy() {
+		doTest( TestingExtendedBeanManager.createLegacy() );
+	}
+
+	private void doTest(TestingExtendedBeanManager beanManager) {
 		Monitor.reset();
 
-		final ExtendedBeanManagerImpl standIn = new ExtendedBeanManagerImpl();
-
-		BootstrapServiceRegistry bsr = new BootstrapServiceRegistryBuilder()
-				.applyIntegrator( new JpaIntegrator() )
-				.build();
+		BootstrapServiceRegistry bsr = new BootstrapServiceRegistryBuilder().build();
 
 		final StandardServiceRegistry ssr = new StandardServiceRegistryBuilder( bsr )
 				.applySetting( AvailableSettings.HBM2DDL_AUTO, Action.CREATE_DROP )
-				.applySetting( AvailableSettings.CDI_BEAN_MANAGER, standIn )
+				.applySetting( AvailableSettings.CDI_BEAN_MANAGER, beanManager )
 				.build();
 
 
@@ -94,12 +103,6 @@ public class InvalidExtendedCdiSupportTest extends BaseUnitTestCase {
 		}
 		finally {
 			sessionFactory.close();
-		}
-	}
-
-	public static class ExtendedBeanManagerImpl implements ExtendedBeanManager {
-		@Override
-		public void registerLifecycleListener(LifecycleListener lifecycleListener) {
 		}
 	}
 }

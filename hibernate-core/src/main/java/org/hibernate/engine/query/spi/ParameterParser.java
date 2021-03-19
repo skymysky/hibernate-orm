@@ -54,7 +54,7 @@ public class ParameterParser {
 		void jpaPositionalParameter(int identifier, int position);
 
 		/**
-		 * Called when a character that is not a parameter (or part of a parameter dfinition) is recognized.
+		 * Called when a character that is not a parameter (or part of a parameter definition) is recognized.
 		 *
 		 * @param character The recognized character
 		 */
@@ -171,7 +171,7 @@ public class ParameterParser {
 					final int right = StringHelper.firstIndexOfChar( sqlString, ParserHelper.HQL_SEPARATORS_BITSET, indx + 1 );
 					final int chopLocation = right < 0 ? sqlString.length() : right;
 					final String param = sqlString.substring( indx + 1, chopLocation );
-					if ( StringHelper.isEmpty( param ) ) {
+					if ( param.isEmpty() ) {
 						throw new QueryException(
 								"Space is not allowed after parameter prefix ':' [" + sqlString + "]"
 						);
@@ -182,13 +182,13 @@ public class ParameterParser {
 				else if ( c == '?' ) {
 					// could be either an ordinal or JPA-positional parameter
 					if ( indx < stringLength - 1 && Character.isDigit( sqlString.charAt( indx + 1 ) ) ) {
-						// a peek ahead showed this as an JPA-positional parameter
+						// a peek ahead showed this as a JPA-positional parameter
 						final int right = StringHelper.firstIndexOfChar( sqlString, ParserHelper.HQL_SEPARATORS, indx + 1 );
 						final int chopLocation = right < 0 ? sqlString.length() : right;
 						final String param = sqlString.substring( indx + 1, chopLocation );
 						// make sure this "name" is an integral
 						try {
-							recognizer.jpaPositionalParameter( Integer.valueOf( param ), indx );
+							recognizer.jpaPositionalParameter( Integer.parseInt( param ), indx );
 							indx = chopLocation - 1;
 						}
 						catch( NumberFormatException e ) {

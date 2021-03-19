@@ -9,6 +9,7 @@ package org.hibernate.hql.internal.ast.tree;
 import org.hibernate.QueryException;
 import org.hibernate.engine.internal.JoinSequence;
 import org.hibernate.hql.internal.CollectionProperties;
+import org.hibernate.hql.internal.antlr.HqlSqlTokenTypes;
 import org.hibernate.hql.internal.antlr.SqlTokenTypes;
 import org.hibernate.hql.internal.ast.util.ASTUtil;
 import org.hibernate.hql.internal.ast.util.ColumnHelper;
@@ -16,6 +17,8 @@ import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.log.DeprecationLogger;
 import org.hibernate.internal.util.StringHelper;
+import org.hibernate.loader.plan.spi.EntityQuerySpace;
+import org.hibernate.loader.plan.spi.QuerySpace;
 import org.hibernate.persister.collection.QueryableCollection;
 import org.hibernate.persister.entity.AbstractEntityPersister;
 import org.hibernate.persister.entity.EntityPersister;
@@ -34,7 +37,7 @@ import antlr.collections.AST;
  *
  * @author Joshua Davis
  */
-public class DotNode extends FromReferenceNode implements DisplayableNode, SelectExpression {
+public class DotNode extends FromReferenceNode implements DisplayableNode, SelectExpression, TableReferenceNode {
 	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( DotNode.class );
 
 	///////////////////////////////////////////////////////////////////////////
@@ -74,10 +77,12 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 	 * The identifier that is the name of the property.
 	 */
 	private String propertyName;
+
 	/**
 	 * The full path, to the root alias of this dot node.
 	 */
 	private String path;
+
 	/**
 	 * The unresolved property path relative to this dot node.
 	 */
@@ -99,7 +104,7 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 	private boolean fetch;
 
 	/**
-	 * The type of dereference that hapened
+	 * The type of dereference that happened
 	 */
 	private DereferenceType dereferenceType = DereferenceType.UNKNOWN;
 
@@ -158,7 +163,7 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 		// Set the attributes of the property reference expression.
 		String propName = property.getText();
 		propertyName = propName;
-		// If the uresolved property path isn't set yet, just use the property name.
+		// If the unresolved property path isn't set yet, just use the property name.
 		if ( propertyPath == null ) {
 			propertyPath = propName;
 		}
@@ -248,11 +253,11 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 
 	private void initText() {
 		String[] cols = getColumns();
-		String text = StringHelper.join( ", ", cols );
+		String text = String.join( ", ", cols );
 		boolean countDistinct = getWalker().isInCountDistinct()
 				&& getWalker().getSessionFactoryHelper().getFactory().getDialect().requiresParensForTupleDistinctCounts();
 		if ( cols.length > 1 &&
-				( getWalker().isComparativeExpressionClause() || countDistinct ) ) {
+				( getWalker().isComparativeExpressionClause() || countDistinct || getWalker().getCurrentClauseType() == HqlSqlTokenTypes.SET ) ) {
 			text = "(" + text + ")";
 		}
 		setText( text );
@@ -390,11 +395,14 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 
 		if ( isDotNode( parent ) ) {
 			// our parent is another dot node, meaning we are being further dereferenced.
-			// thus we need to generate a join unless the parent refers to the associated
-			// entity's PK (because 'our' table would know the FK).
+			// thus we need to generate a join unless the association is non-nullable and
+			// parent refers to the associated entity's PK (because 'our' table would know the FK).
 			parentAsDotNode = (DotNode) parent;
 			property = parentAsDotNode.propertyName;
-			joinIsNeeded = generateJoin && !isReferenceToPrimaryKey( parentAsDotNode.propertyName, entityType );
+			joinIsNeeded = generateJoin && (
+					entityType.isNullable() ||
+					!isPropertyEmbeddedInJoinProperties( parentAsDotNode.propertyName )
+			);
 		}
 		else if ( !getWalker().isSelectStatement() ) {
 			// in non-select queries, the only time we should need to join is if we are in a subquery from clause
@@ -409,7 +417,8 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 			joinIsNeeded = generateJoin;
 		}
 		else {
-			joinIsNeeded = generateJoin || ( getWalker().isInSelect() || getWalker().isInFrom() );
+			joinIsNeeded = generateJoin
+					|| ( getWalker().isInSelect() || getWalker().isInFrom() || ( implicitJoin && getWalker().isInSize() ) );
 		}
 
 		if ( joinIsNeeded ) {
@@ -421,7 +430,7 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 
 	}
 
-	private boolean isDotNode(AST n) {
+	private static boolean isDotNode(AST n) {
 		return n != null && n.getType() == SqlTokenTypes.DOT;
 	}
 
@@ -483,11 +492,6 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 		boolean useFoundFromElement = found && canReuse( classAlias, elem );
 
 		if ( !useFoundFromElement ) {
-			// If this is an implied join in a from element, then use the impled join type which is part of the
-			// tree parser's state (set by the gramamar actions).
-			JoinSequence joinSequence = getSessionFactoryHelper()
-					.createJoinSequence( impliedJoin, propertyType, tableAlias, joinType, joinColumns );
-
 			// If the lhs of the join is a "component join", we need to go back to the
 			// first non-component-join as the origin to properly link aliases and
 			// join columns
@@ -500,6 +504,27 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 			}
 
 			String role = lhsFromElement.getClassName() + "." + propertyName;
+
+			JoinSequence joinSequence;
+
+			if ( joinColumns.length == 0 && lhsFromElement instanceof EntityQuerySpace ) {
+				// When no columns are available, this is a special join that involves multiple subtypes
+				String lhsTableAlias = getLhs().getFromElement().getTableAlias();
+
+				AbstractEntityPersister persister = (AbstractEntityPersister) lhsFromElement.getEntityPersister();
+
+				String[][] polyJoinColumns = persister.getPolymorphicJoinColumns(lhsTableAlias, propertyPath);
+
+				// Special join sequence that uses the poly join columns
+				joinSequence = getSessionFactoryHelper()
+						.createJoinSequence( impliedJoin, propertyType, tableAlias, joinType, polyJoinColumns );
+			}
+			else {
+				// If this is an implied join in a from element, then use the implied join type which is part of the
+				// tree parser's state (set by the grammar actions).
+				joinSequence = getSessionFactoryHelper()
+						.createJoinSequence( impliedJoin, propertyType, tableAlias, joinType, joinColumns );
+			}
 
 			FromElementFactory factory = new FromElementFactory(
 					currentFromClause,
@@ -536,7 +561,7 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 			return true;
 		}
 
-		// otherwise (subquery case) dont reuse the fromElement if we are processing the from-clause of the subquery
+		// otherwise (subquery case) don't reuse the fromElement if we are processing the from-clause of the subquery
 		return getWalker().getCurrentClauseType() != SqlTokenTypes.FROM;
 	}
 
@@ -561,39 +586,43 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 	}
 
 	/**
-	 * Is the given property name a reference to the primary key of the associated
-	 * entity construed by the given entity type?
+	 * Is the given property name a reference to the join key of the associated
+	 * entity constructed by the given entity type?
+	 * <p/>
+	 *
+	 * This method resolves the {@code propertyName} as a property of the entity type at the
+	 * {@link #propertyPath} relative to the {@link #getFromElement() FromElement}.
+	 * The implementation does so by invoking {@link FromElement#getPropertyType(String, String)},
+	 * which will resolve the property path against the entity's {@link org.hibernate.persister.entity.PropertyMapping}.
+	 * On initialization of the {@link EntityPersister}, this {@code PropertyMapping} is filled with
+	 * property paths for all the owned properties and associations, and (embedded) identifier or unique key
+	 * properties for owned associations.
+	 * Henceforth, whenever a property path is found in the {@code PropertyMapping} of the {@code EntityPersister}
+	 * of the {@code FromElement}, we know that the property corresponds to a SQL fragment producible from the
+	 * {@code FromElement}, and as such the entity property can be dereferenced (optimized) in the final query.
+	 *
 	 * <p/>
 	 * For example, consider a fragment like order.customer.id
 	 * (where order is a from-element alias).  Here, we'd have:
 	 * propertyName = "id" AND
-	 * owningType = ManyToOneType(Customer)
-	 * and are being asked to determine whether "customer.id" is a reference
-	 * to customer's PK...
+	 * propertyPath = "customer"
+	 * FromElement = Order
+	 * and are being asked to determine whether "customer.id" is a property path of Order
 	 *
 	 * @param propertyName The name of the property to check.
-	 * @param owningType The type represeting the entity "owning" the property
 	 *
 	 * @return True if propertyName references the entity's (owningType->associatedEntity)
-	 *         primary key; false otherwise.
+	 *         join key; false otherwise.
 	 */
-	private boolean isReferenceToPrimaryKey(String propertyName, EntityType owningType) {
-		EntityPersister persister = getSessionFactoryHelper()
-				.getFactory()
-				.getEntityPersister( owningType.getAssociatedEntityName() );
-		if ( persister.getEntityMetamodel().hasNonIdentifierPropertyNamedId() ) {
-			// only the identifier property field name can be a reference to the associated entity's PK...
-			return propertyName.equals( persister.getIdentifierPropertyName() ) && owningType.isReferenceToPrimaryKey();
+	private boolean isPropertyEmbeddedInJoinProperties(String propertyName) {
+		String propertyPath = String.join( ".", this.propertyPath, propertyName );
+		try {
+			Type propertyType = getFromElement().getPropertyType( this.propertyPath, propertyPath );
+			return propertyType != null;
 		}
-		// here, we have two possibilities:
-		// 1) the property-name matches the explicitly identifier property name
-		// 2) the property-name matches the implicit 'id' property name
-		// the referenced node text is the special 'id'
-		if ( EntityPersister.ENTITY_ID.equals( propertyName ) ) {
-			return owningType.isReferenceToPrimaryKey();
+		catch (QueryException e) {
+			return false;
 		}
-		String keyPropertyName = getSessionFactoryHelper().getIdentifierOrUniqueKeyPropertyName( owningType );
-		return keyPropertyName != null && keyPropertyName.equals( propertyName ) && owningType.isReferenceToPrimaryKey();
 	}
 
 	private void checkForCorrelatedSubquery(String methodName) {
@@ -629,8 +658,9 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 			);
 		}
 
-		initText();
 		setPropertyNameAndPath( dotParent ); // Set the unresolved path in this node and the parent.
+		initText();
+
 		// Set the text for the parent.
 		if ( dotParent != null ) {
 			dotParent.dereferenceType = DereferenceType.IDENTIFIER;
@@ -662,11 +692,24 @@ public class DotNode extends FromReferenceNode implements DisplayableNode, Selec
 				return null;
 			}
 			// If the lhs is a collection, use CollectionPropertyMapping
-			Type propertyType = fromElement.getPropertyType( propertyName, propertyPath );
+			Type propertyType = fromElement.getPropertyType( propertyPath, propertyPath );
 			LOG.debugf( "getDataType() : %s -> %s", propertyPath, propertyType );
 			super.setDataType( propertyType );
 		}
 		return super.getDataType();
+	}
+
+	@Override
+	public String[] getReferencedTables() {
+		FromReferenceNode lhs = ( (FromReferenceNode) getFirstChild() );
+		if ( lhs != null) {
+			FromElement fromElement = lhs.getFromElement();
+			if ( fromElement != null ) {
+				String propertyTableName = fromElement.getPropertyTableName( propertyPath );
+				return new String[] { propertyTableName };
+			}
+		}
+		return null;
 	}
 
 	public void setPropertyPath(String propertyPath) {

@@ -31,7 +31,7 @@ public interface EnhancementContext {
 	public ClassLoader getLoadingClassLoader();
 
 	/**
-	 * Does the given class descriptor represent a entity class?
+	 * Does the given class descriptor represent an entity class?
 	 *
 	 * @param classDescriptor The descriptor of the class to check.
 	 *
@@ -49,11 +49,11 @@ public interface EnhancementContext {
 	public boolean isCompositeClass(UnloadedClass classDescriptor);
 
 	/**
-	 * Does the given class name represent an MappedSuperclass class?
+	 * Does the given class name represent a MappedSuperclass class?
 	 *
 	 * @param classDescriptor The descriptor of the class to check.
 	 *
-	 * @return {@code true} if the class is an mapped super class; {@code false} otherwise.
+	 * @return {@code true} if the class is a mapped super class; {@code false} otherwise.
 	 */
 	public boolean isMappedSuperclassClass(UnloadedClass classDescriptor);
 

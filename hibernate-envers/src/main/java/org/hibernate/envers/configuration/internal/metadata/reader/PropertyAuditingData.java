@@ -9,12 +9,15 @@ package org.hibernate.envers.configuration.internal.metadata.reader;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.persistence.EnumType;
+
 import org.hibernate.envers.AuditJoinTable;
 import org.hibernate.envers.AuditOverride;
 import org.hibernate.envers.AuditOverrides;
 import org.hibernate.envers.ModificationStore;
 import org.hibernate.envers.RelationTargetAuditMode;
 import org.hibernate.envers.internal.entities.PropertyData;
+import org.hibernate.envers.internal.tools.StringTools;
 import org.hibernate.mapping.Value;
 import org.hibernate.type.Type;
 
@@ -28,6 +31,7 @@ public class PropertyAuditingData {
 	private String beanName;
 	private ModificationStore store;
 	private String mapKey;
+	private EnumType mapKeyEnumType;
 	private AuditJoinTable joinTable;
 	private String accessType;
 	private final List<AuditOverride> auditJoinTableOverrides = new ArrayList<>( 0 );
@@ -38,6 +42,7 @@ public class PropertyAuditingData {
 	private boolean forceInsertable;
 	private boolean usingModifiedFlag;
 	private String modifiedFlagName;
+	private String explicitModifiedFlagName;
 	private Value value;
 	// Synthetic properties are ones which are not part of the actual java model.
 	// They're properties used for bookkeeping by Hibernate
@@ -126,6 +131,14 @@ public class PropertyAuditingData {
 		this.mapKey = mapKey;
 	}
 
+	public EnumType getMapKeyEnumType() {
+		return mapKeyEnumType;
+	}
+
+	public void setMapKeyEnumType(EnumType mapKeyEnumType) {
+		this.mapKeyEnumType = mapKeyEnumType;
+	}
+
 	public AuditJoinTable getJoinTable() {
 		return joinTable;
 	}
@@ -157,6 +170,20 @@ public class PropertyAuditingData {
 				modifiedFlagName,
 				syntheic,
 				propertyType
+		);
+	}
+
+	public PropertyData resolvePropertyData(Type propertyType, Type virtualType) {
+		return new PropertyData(
+				name,
+				beanName,
+				accessType,
+				store,
+				usingModifiedFlag,
+				modifiedFlagName,
+				syntheic,
+				propertyType,
+				virtualType.getReturnedClass()
 		);
 	}
 
@@ -210,6 +237,18 @@ public class PropertyAuditingData {
 
 	public void setModifiedFlagName(String modifiedFlagName) {
 		this.modifiedFlagName = modifiedFlagName;
+	}
+
+	public boolean isModifiedFlagNameExplicitlySpecified() {
+		return !StringTools.isEmpty( explicitModifiedFlagName );
+	}
+
+	public String getExplicitModifiedFlagName() {
+		return explicitModifiedFlagName;
+	}
+
+	public void setExplicitModifiedFlagName(String modifiedFlagName) {
+		this.explicitModifiedFlagName = modifiedFlagName;
 	}
 
 	public void addAuditingOverride(AuditOverride annotation) {

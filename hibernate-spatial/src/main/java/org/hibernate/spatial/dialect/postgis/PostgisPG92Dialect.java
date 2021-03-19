@@ -31,7 +31,7 @@ public class PostgisPG92Dialect extends PostgreSQL92Dialect implements SpatialDi
 	public PostgisPG92Dialect() {
 		super();
 		registerColumnType(
-				PGGeometryTypeDescriptor.INSTANCE.getSqlType(),
+				PGGeometryTypeDescriptor.INSTANCE_WKB_1.getSqlType(),
 				"GEOMETRY"
 		);
 		for ( Map.Entry<String, SQLFunction> entry : support.functionsToRegister() ) {
@@ -107,11 +107,11 @@ public class PostgisPG92Dialect extends PostgreSQL92Dialect implements SpatialDi
 	}
 
 	/**
-	 * Returns the SQL fragment when parsing an <code>HavingSridExpression</code>.
+	 * Returns the SQL fragment when parsing a <code>HavingSridExpression</code>.
 	 *
 	 * @param columnName The geometry column to test against
 	 *
-	 * @return The SQL fragment for an <code>HavingSridExpression</code>.
+	 * @return The SQL fragment for a <code>HavingSridExpression</code>.
 	 */
 	@Override
 	public String getHavingSridSQL(String columnName) {

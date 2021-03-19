@@ -15,7 +15,7 @@ import org.hibernate.query.criteria.internal.Renderable;
 import org.hibernate.query.criteria.internal.compile.RenderingContext;
 
 /**
- * Represents a {@link Modifier#ALL}, {@link Modifier#ANY}, {@link Modifier#SOME} modifier appplied to a subquery as
+ * Represents a {@link Modifier#ALL}, {@link Modifier#ANY}, {@link Modifier#SOME} modifier applied to a subquery as
  * part of a comparison.
  *
  * @author Steve Ebersole
@@ -69,9 +69,5 @@ public class SubqueryComparisonModifierExpression<Y>
 
 	public String render(RenderingContext renderingContext) {
 		return getModifier().rendered() + ( (Renderable) getSubquery() ).render( renderingContext );
-	}
-
-	public String renderProjection(RenderingContext renderingContext) {
-		return render( renderingContext );
 	}
 }

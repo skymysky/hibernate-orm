@@ -38,6 +38,7 @@ import org.hibernate.criterion.Subqueries;
 import org.hibernate.dialect.Oracle8iDialect;
 import org.hibernate.dialect.SQLServerDialect;
 import org.hibernate.dialect.SybaseASE15Dialect;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 import org.hibernate.exception.SQLGrammarException;
 import org.hibernate.internal.util.SerializationHelper;
 import org.hibernate.transform.Transformers;
@@ -68,10 +69,13 @@ import static org.mockito.Mockito.verify;
  * @author Gavin King
  * @author Lukasz Antoniak (lukasz dot antoniak at gmail dot com)
  */
-@RequiresDialectFeature(DialectChecks.SupportsSequences.class)
+@RequiresDialectFeature({
+	DialectChecks.SupportsSequences.class,
+	DialectChecks.SupportsJdbcDriverProxying.class
+})
 public class CriteriaQueryTest extends BaseNonConfigCoreFunctionalTestCase {
 
-	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider();
+	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider( true, false );
 
 	@Override
 	public String[] getMappings() {
@@ -89,6 +93,7 @@ public class CriteriaQueryTest extends BaseNonConfigCoreFunctionalTestCase {
 		);
 		settings.put( AvailableSettings.USE_SECOND_LEVEL_CACHE, "true" );
 		settings.put( AvailableSettings.GENERATE_STATISTICS, "true" );
+		connectionProvider.setConnectionProvider( (ConnectionProvider) settings.get( AvailableSettings.CONNECTION_PROVIDER ) );
 		settings.put(
 				AvailableSettings.CONNECTION_PROVIDER,
 				connectionProvider

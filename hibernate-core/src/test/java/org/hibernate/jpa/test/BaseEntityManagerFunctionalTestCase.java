@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+
 import javax.persistence.EntityManager;
 import javax.persistence.SharedCacheMode;
 import javax.persistence.ValidationMode;
@@ -21,20 +22,21 @@ import javax.persistence.spi.PersistenceUnitTransactionType;
 
 import org.hibernate.boot.registry.internal.StandardServiceRegistryImpl;
 import org.hibernate.bytecode.enhance.spi.EnhancementContext;
+import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.Dialect;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.internal.util.StringHelper;
-import org.hibernate.jpa.AvailableSettings;
+import org.hibernate.hql.spi.id.global.GlobalTemporaryTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.local.LocalTemporaryTableBulkIdStrategy;
 import org.hibernate.jpa.HibernatePersistenceProvider;
 import org.hibernate.jpa.boot.spi.Bootstrap;
 import org.hibernate.jpa.boot.spi.PersistenceUnitDescriptor;
 
+import org.hibernate.testing.jdbc.SharedDriverManagerConnectionProviderImpl;
 import org.hibernate.testing.junit4.BaseUnitTestCase;
 import org.junit.After;
 import org.junit.Before;
-
-import org.jboss.logging.Logger;
 
 /**
  * A base class for all ejb tests.
@@ -69,7 +71,7 @@ public abstract class BaseEntityManagerFunctionalTestCase extends BaseUnitTestCa
 
 	@Before
 	@SuppressWarnings( {"UnusedDeclaration"})
-	public void buildEntityManagerFactory() throws Exception {
+	public void buildEntityManagerFactory() {
 		log.trace( "Building EntityManagerFactory" );
 
 		entityManagerFactory =  Bootstrap.getEntityManagerFactoryBuilder(
@@ -83,7 +85,7 @@ public abstract class BaseEntityManagerFunctionalTestCase extends BaseUnitTestCa
 		afterEntityManagerFactoryBuilt();
 	}
 
-	private PersistenceUnitDescriptor buildPersistenceUnitDescriptor() {
+	protected PersistenceUnitDescriptor buildPersistenceUnitDescriptor() {
 		return new TestingPersistenceUnitDescriptorImpl( getClass().getSimpleName() );
 	}
 
@@ -196,7 +198,7 @@ public abstract class BaseEntityManagerFunctionalTestCase extends BaseUnitTestCa
 	protected void addMappings(Map settings) {
 		String[] mappings = getMappings();
 		if ( mappings != null ) {
-			settings.put( AvailableSettings.HBXML_FILES, StringHelper.join( ",", mappings ) );
+			settings.put( AvailableSettings.HBXML_FILES, String.join( ",", mappings ) );
 		}
 	}
 
@@ -209,6 +211,8 @@ public abstract class BaseEntityManagerFunctionalTestCase extends BaseUnitTestCa
 	protected Map getConfig() {
 		Map<Object, Object> config = Environment.getProperties();
 		ArrayList<Class> classes = new ArrayList<Class>();
+
+		config.put( AvailableSettings.CLASSLOADERS, getClass().getClassLoader() );
 
 		classes.addAll( Arrays.asList( getAnnotatedClasses() ) );
 		config.put( AvailableSettings.LOADED_CLASSES, classes );
@@ -224,6 +228,14 @@ public abstract class BaseEntityManagerFunctionalTestCase extends BaseUnitTestCa
 			config.put( AvailableSettings.XML_FILE_NAMES, dds );
 		}
 
+		config.put( GlobalTemporaryTableBulkIdStrategy.DROP_ID_TABLES, "true" );
+		config.put( LocalTemporaryTableBulkIdStrategy.DROP_ID_TABLES, "true" );
+		if ( !config.containsKey( Environment.CONNECTION_PROVIDER ) ) {
+			config.put(
+					AvailableSettings.CONNECTION_PROVIDER,
+					SharedDriverManagerConnectionProviderImpl.getInstance()
+			);
+		}
 		addConfigOptions( config );
 		return config;
 	}

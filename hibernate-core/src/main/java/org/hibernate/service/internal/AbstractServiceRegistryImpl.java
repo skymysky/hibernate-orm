@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import org.hibernate.boot.registry.BootstrapServiceRegistry;
 import org.hibernate.cfg.Environment;
@@ -48,7 +49,7 @@ public abstract class AbstractServiceRegistryImpl
 
 	public static final String ALLOW_CRAWLING = "hibernate.service.allow_crawling";
 
-	private final ServiceRegistryImplementor parent;
+	private volatile ServiceRegistryImplementor parent;
 	private final boolean allowCrawling;
 
 	private final ConcurrentMap<Class,ServiceBinding> serviceBindingMap = new ConcurrentHashMap<>();
@@ -124,6 +125,10 @@ public abstract class AbstractServiceRegistryImpl
 			serviceBindingMap.put( providedService.getServiceRole(), binding );
 		}
 		registerService( binding, providedService.getService() );
+	}
+
+	protected void visitServiceBindings(Consumer<ServiceBinding> action) {
+		serviceBindingList.forEach( action );
 	}
 
 	@Override
@@ -300,7 +305,8 @@ public abstract class AbstractServiceRegistryImpl
 
 	@SuppressWarnings({ "unchecked" })
 	private <T extends Service> void processInjection(T service, Method injectionMethod, InjectService injectService) {
-		if ( injectionMethod.getParameterTypes() == null || injectionMethod.getParameterCount() != 1 ) {
+		final Class<?>[] parameterTypes = injectionMethod.getParameterTypes();
+		if ( parameterTypes == null || injectionMethod.getParameterCount() != 1 ) {
 			throw new ServiceDependencyException(
 					"Encountered @InjectService on method with unexpected number of parameters"
 			);
@@ -308,7 +314,7 @@ public abstract class AbstractServiceRegistryImpl
 
 		Class dependentServiceRole = injectService.serviceRole();
 		if ( dependentServiceRole == null || dependentServiceRole.equals( Void.class ) ) {
-			dependentServiceRole = injectionMethod.getParameterTypes()[0];
+			dependentServiceRole = parameterTypes[0];
 		}
 
 		// todo : because of the use of proxies, this is no longer returning null here...
@@ -377,14 +383,14 @@ public abstract class AbstractServiceRegistryImpl
 	}
 
 	@Override
-	public <R extends Service> void stopService(ServiceBinding<R> binding) {
+	public synchronized <R extends Service> void stopService(ServiceBinding<R> binding) {
 		final Service service = binding.getService();
 		if ( Stoppable.class.isInstance( service ) ) {
 			try {
 				( (Stoppable) service ).stop();
 			}
 			catch ( Exception e ) {
-				log.unableToStopService( service.getClass(), e.toString() );
+				log.unableToStopService( service.getClass(), e );
 			}
 		}
 	}
@@ -424,4 +430,33 @@ public abstract class AbstractServiceRegistryImpl
 			}
 		}
 	}
+
+	/**
+	 * Very advanced and tricky to handle: not designed for this. Intended for experiments only!
+	 */
+	public synchronized void resetParent(BootstrapServiceRegistry newParent) {
+		if ( this.parent != null ) {
+			this.parent.deRegisterChild( this );
+		}
+		if ( newParent != null ) {
+			if ( ! ServiceRegistryImplementor.class.isInstance( newParent ) ) {
+				throw new IllegalArgumentException( "ServiceRegistry parent needs to implement ServiceRegistryImplementor" );
+			}
+			this.parent = (ServiceRegistryImplementor) newParent;
+			this.parent.registerChild( this );
+		}
+		else {
+			this.parent = null;
+		}
+	}
+
+	public synchronized void reactivate() {
+		if ( active.compareAndSet( false, true ) ) {
+			//ok
+		}
+		else {
+			throw new IllegalStateException( "Was not inactive, could not reactivate!" );
+		}
+	}
+
 }

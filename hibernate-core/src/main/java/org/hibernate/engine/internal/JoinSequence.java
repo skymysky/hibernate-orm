@@ -14,6 +14,7 @@ import org.hibernate.MappingException;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.hql.internal.ast.tree.ImpliedFromElement;
 import org.hibernate.internal.util.StringHelper;
+import org.hibernate.persister.collection.AbstractCollectionPersister;
 import org.hibernate.persister.collection.QueryableCollection;
 import org.hibernate.persister.entity.AbstractEntityPersister;
 import org.hibernate.persister.entity.Joinable;
@@ -47,6 +48,7 @@ public class JoinSequence {
 	private Selector selector;
 	private JoinSequence next;
 	private boolean isFromPart;
+	private Set<String> queryReferencedTables;
 
 	/**
 	 * Constructs a JoinSequence
@@ -129,14 +131,35 @@ public class JoinSequence {
 			String alias,
 			JoinType joinType,
 			String[] referencingKey) throws MappingException {
-		joins.add( new Join( factory, associationType, alias, joinType, referencingKey ) );
+		joins.add( new Join( factory, associationType, alias, joinType, new String[][] { referencingKey } ) );
 		return this;
 	}
 
 	/**
-	 * Embedds an implied from element into this sequence
+	 * Add a join to this sequence
 	 *
-	 * @param fromElement The implied from element to embedd
+	 * @param associationType The type of the association representing the join
+	 * @param alias The RHS alias for the join
+	 * @param joinType The type of join (INNER, etc)
+	 * @param referencingKeys The LHS columns for the join condition
+	 *
+	 * @return The Join memento
+	 *
+	 * @throws MappingException Generally indicates a problem resolving the associationType to a {@link Joinable}
+	 */
+	public JoinSequence addJoin(
+			AssociationType associationType,
+			String alias,
+			JoinType joinType,
+			String[][] referencingKeys) throws MappingException {
+		joins.add( new Join( factory, associationType, alias, joinType, referencingKeys ) );
+		return this;
+	}
+
+	/**
+	 * Embeds an implied from element into this sequence
+	 *
+	 * @param fromElement The implied from element to embed
 	 * @return The Join memento
 	 */
 	public JoinSequence addJoin(ImpliedFromElement fromElement) {
@@ -242,8 +265,7 @@ public class JoinSequence {
 							join.getAlias(),
 							join.getLHSColumns(),
 							JoinHelper.getRHSColumnNames( join.getAssociationType(), factory ),
-							join.joinType,
-							""
+							join.joinType
 					);
 				}
 				addSubclassJoins(
@@ -263,17 +285,28 @@ public class JoinSequence {
 			joinFragment.addFromFragmentString( " on " );
 
 			final String rhsAlias = first.getAlias();
-			final String[] lhsColumns = first.getLHSColumns();
+			final String[][] lhsColumns = first.getLHSColumns();
 			final String[] rhsColumns = JoinHelper.getRHSColumnNames( first.getAssociationType(), factory );
-			for ( int j=0; j < lhsColumns.length; j++) {
-				joinFragment.addFromFragmentString( lhsColumns[j] );
-				joinFragment.addFromFragmentString( "=" );
-				joinFragment.addFromFragmentString( rhsAlias );
-				joinFragment.addFromFragmentString( "." );
-				joinFragment.addFromFragmentString( rhsColumns[j] );
-				if ( j < lhsColumns.length - 1 ) {
-					joinFragment.addFromFragmentString( " and " );
+			if ( lhsColumns.length > 1 ) {
+				joinFragment.addFromFragmentString( "(" );
+			}
+			for ( int i = 0; i < lhsColumns.length; i++ ) {
+				for ( int j = 0; j < lhsColumns[i].length; j++ ) {
+					joinFragment.addFromFragmentString( lhsColumns[i][j] );
+					joinFragment.addFromFragmentString( "=" );
+					joinFragment.addFromFragmentString( rhsAlias );
+					joinFragment.addFromFragmentString( "." );
+					joinFragment.addFromFragmentString( rhsColumns[j] );
+					if ( j < lhsColumns[i].length - 1 ) {
+						joinFragment.addFromFragmentString( " and " );
+					}
 				}
+				if ( i < lhsColumns.length - 1 ) {
+					joinFragment.addFromFragmentString( " or " );
+				}
+			}
+			if ( lhsColumns.length > 1 ) {
+				joinFragment.addFromFragmentString( ")" );
 			}
 
 			joinFragment.addFromFragmentString( " and " );
@@ -302,9 +335,9 @@ public class JoinSequence {
 						join.getAlias(),
 						enabledFilters
 				);
-				condition = "".equals( manyToManyFilter )
+				condition = (manyToManyFilter != null && manyToManyFilter.isEmpty())
 						? on
-						: "".equals( on ) ? manyToManyFilter : on + " and " + manyToManyFilter;
+						: (on != null && on.isEmpty()) ? manyToManyFilter : on + " and " + manyToManyFilter;
 			}
 			else {
 				condition = on;
@@ -390,9 +423,16 @@ public class JoinSequence {
 	}
 
 	private boolean isSubclassAliasDereferenced(Join join, String withClauseFragment) {
-		if ( join.getJoinable() instanceof AbstractEntityPersister ) {
-			AbstractEntityPersister persister = (AbstractEntityPersister) join.getJoinable();
-			int subclassTableSpan = persister.getSubclassTableSpan();
+		Object joinable = join.getJoinable();
+		if ( joinable instanceof AbstractCollectionPersister ) {
+			final AbstractCollectionPersister collectionPersister = (AbstractCollectionPersister) joinable;
+			if ( collectionPersister.getElementType().isEntityType() ) {
+				joinable = ( collectionPersister ).getElementPersister();
+			}
+		}
+		if ( joinable instanceof AbstractEntityPersister ) {
+			final AbstractEntityPersister persister = (AbstractEntityPersister) joinable;
+			final int subclassTableSpan = persister.getSubclassTableSpan();
 			for ( int j = 1; j < subclassTableSpan; j++ ) {
 				String subclassAlias = AbstractEntityPersister.generateTableAlias( join.getAlias(), j );
 				if ( isAliasDereferenced( withClauseFragment, subclassAlias ) ) {
@@ -435,7 +475,7 @@ public class JoinSequence {
 			Set<String> treatAsDeclarations) {
 		final boolean include = includeSubclassJoins && isIncluded( alias );
 		joinFragment.addJoins(
-				joinable.fromJoinFragment( alias, innerJoin, include, treatAsDeclarations ),
+				joinable.fromJoinFragment( alias, innerJoin, include, treatAsDeclarations, queryReferencedTables ),
 				joinable.whereJoinFragment( alias, innerJoin, include, treatAsDeclarations )
 		);
 	}
@@ -452,7 +492,7 @@ public class JoinSequence {
 	 * @return {@link this}, for method chaining
 	 */
 	public JoinSequence addCondition(String condition) {
-		if ( condition.trim().length() != 0 ) {
+		if ( !StringHelper.isBlank( condition ) ) {
 			if ( !condition.startsWith( " and " ) ) {
 				conditions.append( " and " );
 			}
@@ -542,6 +582,15 @@ public class JoinSequence {
 		return useThetaStyle;
 	}
 
+	/**
+	 * Set all tables the query refers to. It allows to optimize the query.
+	 *
+	 * @param queryReferencedTables
+	 */
+	public void setQueryReferencedTables(Set<String> queryReferencedTables) {
+		this.queryReferencedTables = queryReferencedTables;
+	}
+
 	public Join getFirstJoin() {
 		return joins.get( 0 );
 	}
@@ -568,14 +617,14 @@ public class JoinSequence {
 		private final Joinable joinable;
 		private final JoinType joinType;
 		private final String alias;
-		private final String[] lhsColumns;
+		private final String[][] lhsColumns;
 
 		Join(
 				SessionFactoryImplementor factory,
 				AssociationType associationType,
 				String alias,
 				JoinType joinType,
-				String[] lhsColumns) throws MappingException {
+				String[][] lhsColumns) throws MappingException {
 			this.associationType = associationType;
 			this.joinable = associationType.getAssociatedJoinable( factory );
 			this.alias = alias;
@@ -599,7 +648,7 @@ public class JoinSequence {
 			return joinType;
 		}
 
-		public String[] getLHSColumns() {
+		public String[][] getLHSColumns() {
 			return lhsColumns;
 		}
 

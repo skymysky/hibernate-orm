@@ -255,9 +255,7 @@ public class SchemaExport {
 			Metadata metadata,
 			ServiceRegistry serviceRegistry,
 			TargetDescriptor targetDescriptor) {
-		Map config = new HashMap();
-		config.putAll( serviceRegistry.getService( ConfigurationService.class ).getSettings() );
-
+		Map config = new HashMap( serviceRegistry.getService( ConfigurationService.class ).getSettings() );
 		config.put( AvailableSettings.HBM2DDL_DELIMITER, delimiter );
 		config.put( AvailableSettings.FORMAT_SQL, format );
 		config.put( AvailableSettings.HBM2DDL_IMPORT_FILES, importFiles );
@@ -356,7 +354,6 @@ public class SchemaExport {
 		}
 		catch (Exception e) {
 			LOG.unableToCreateSchema( e );
-			e.printStackTrace();
 		}
 	}
 

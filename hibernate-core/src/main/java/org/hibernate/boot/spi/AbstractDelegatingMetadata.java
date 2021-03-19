@@ -24,6 +24,7 @@ import org.hibernate.engine.ResultSetMappingDefinition;
 import org.hibernate.engine.spi.FilterDefinition;
 import org.hibernate.engine.spi.NamedQueryDefinition;
 import org.hibernate.engine.spi.NamedSQLQueryDefinition;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.id.factory.IdentifierGeneratorFactory;
 import org.hibernate.internal.SessionFactoryImpl;
 import org.hibernate.mapping.FetchProfile;
@@ -33,6 +34,7 @@ import org.hibernate.mapping.Table;
 import org.hibernate.query.spi.NamedQueryRepository;
 import org.hibernate.type.Type;
 import org.hibernate.type.TypeResolver;
+import org.hibernate.type.spi.TypeConfiguration;
 
 /**
  * Convenience base class for custom implementors of {@link MetadataImplementor} using delegation.
@@ -208,6 +210,18 @@ public abstract class AbstractDelegatingMetadata implements MetadataImplementor 
 	}
 
 	@Override
+	public TypeConfiguration getTypeConfiguration() {
+		return delegate.getTypeConfiguration();
+	}
+
+	/**
+	 * Retrieve the {@link Type} resolver associated with this factory.
+	 *
+	 * @return The type resolver
+	 *
+	 * @deprecated (since 5.3) No replacement, access to and handling of Types will be much different in 6.0
+	 */
+	@Deprecated
 	public TypeResolver getTypeResolver() {
 		return delegate.getTypeResolver();
 	}
@@ -226,4 +240,10 @@ public abstract class AbstractDelegatingMetadata implements MetadataImplementor 
 	public Set<MappedSuperclass> getMappedSuperclassMappingsCopy() {
 		return delegate.getMappedSuperclassMappingsCopy();
 	}
+
+	@Override
+	public void initSessionFactory(SessionFactoryImplementor sessionFactory) {
+		delegate.initSessionFactory( sessionFactory );
+	}
+
 }

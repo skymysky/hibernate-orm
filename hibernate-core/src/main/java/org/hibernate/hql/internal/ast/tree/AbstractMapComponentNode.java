@@ -10,8 +10,9 @@ import java.util.Map;
 
 import org.hibernate.hql.internal.antlr.HqlSqlTokenTypes;
 import org.hibernate.hql.internal.ast.util.ColumnHelper;
-import org.hibernate.internal.util.StringHelper;
 import org.hibernate.persister.collection.QueryableCollection;
+import org.hibernate.persister.entity.AbstractEntityPersister;
+import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.type.CollectionType;
 import org.hibernate.type.Type;
 
@@ -23,7 +24,7 @@ import antlr.collections.AST;
  *
  * @author Steve Ebersole
  */
-public abstract class AbstractMapComponentNode extends FromReferenceNode implements HqlSqlTokenTypes {
+public abstract class AbstractMapComponentNode extends FromReferenceNode implements HqlSqlTokenTypes, TableReferenceNode {
 	private FromElement mapFromElement;
 	private String[] columns;
 
@@ -36,7 +37,7 @@ public abstract class AbstractMapComponentNode extends FromReferenceNode impleme
 	}
 
 	@Override
-	public void setScalarColumnText(int i) throws SemanticException {
+	public void setScalarColumnText(int i) {
 		ColumnHelper.generateScalarColumns( this, getColumns(), i );
 	}
 
@@ -90,7 +91,7 @@ public abstract class AbstractMapComponentNode extends FromReferenceNode impleme
 	}
 
 	private void initText(String[] columns) {
-		String text = StringHelper.join( ", ", columns );
+		String text = String.join( ", ", columns );
 		if ( columns.length > 1 && getWalker().isComparativeExpressionClause() ) {
 			text = "(" + text + ")";
 		}
@@ -106,7 +107,7 @@ public abstract class AbstractMapComponentNode extends FromReferenceNode impleme
 	}
 
 	@Override
-	public void resolveIndex(AST parent) throws SemanticException {
+	public void resolveIndex(AST parent) {
 		throw new UnsupportedOperationException( expressionDescription() + " expression cannot be the source for an index operation" );
 	}
 
@@ -124,4 +125,19 @@ public abstract class AbstractMapComponentNode extends FromReferenceNode impleme
 
 		return MapKeyEntityFromElement.buildKeyJoin( getFromElement() );
 	}
+
+	@Override
+	public String[] getReferencedTables() {
+		String[] referencedTables = null;
+		FromElement fromElement = getFromElement();
+		if ( fromElement != null ) {
+			EntityPersister entityPersister = fromElement.getEntityPersister();
+			if ( entityPersister != null && entityPersister instanceof AbstractEntityPersister ) {
+				AbstractEntityPersister abstractEntityPersister = (AbstractEntityPersister) entityPersister;
+				referencedTables = abstractEntityPersister.getTableNames();
+			}
+		}
+		return referencedTables;
+	}
+
 }

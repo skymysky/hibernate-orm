@@ -13,13 +13,14 @@ import java.util.Map;
 
 import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
-import org.hibernate.cache.spi.access.CollectionRegionAccessStrategy;
+import org.hibernate.cache.spi.access.CollectionDataAccess;
 import org.hibernate.cache.spi.entry.CacheEntryStructure;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.id.IdentifierGenerator;
 import org.hibernate.metadata.CollectionMetadata;
+import org.hibernate.metamodel.model.domain.NavigableRole;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.persister.walking.spi.CollectionDefinition;
 import org.hibernate.type.CollectionType;
@@ -47,7 +48,7 @@ import org.hibernate.type.Type;
  *         by the persister
  *     </li>
  *     <li>
- *         {@link CollectionRegionAccessStrategy} - the second level caching strategy for this collection
+ *         {@link CollectionDataAccess} - the second level caching strategy for this collection
  *     </li>
  *     <li>
  *         {@link org.hibernate.persister.spi.PersisterCreationContext} - access to additional
@@ -72,7 +73,10 @@ public interface CollectionPersister extends CollectionDefinition {
 	/**
 	 * Get the cache
 	 */
-	CollectionRegionAccessStrategy getCacheAccessStrategy();
+	CollectionDataAccess getCacheAccessStrategy();
+
+	NavigableRole getNavigableRole();
+
 	/**
 	 * Get the cache structure
 	 */
@@ -139,7 +143,7 @@ public interface CollectionPersister extends CollectionDefinition {
 	/**
 	 * Is this a many-to-many association?  Note that this is mainly
 	 * a convenience feature as the single persister does not
-	 * conatin all the information needed to handle a many-to-many
+	 * contain all the information needed to handle a many-to-many
 	 * itself, as internally it is looked at as two many-to-ones.
 	 */
 	boolean isManyToMany();
@@ -156,7 +160,7 @@ public interface CollectionPersister extends CollectionDefinition {
 	boolean isLazy();
 	/**
 	 * Is this collection "inverse", so state changes are not
-	 * propogated to the database.
+	 * propagated to the database.
 	 */
 	boolean isInverse();
 	/**
@@ -197,7 +201,7 @@ public interface CollectionPersister extends CollectionDefinition {
 			Serializable key,
 			SharedSessionContractImplementor session)
 		throws HibernateException;
-	
+
 	/**
 	 * Process queued operations within the PersistentCollection.
 	 */
@@ -206,7 +210,7 @@ public interface CollectionPersister extends CollectionDefinition {
 			Serializable key,
 			SharedSessionContractImplementor session)
 			throws HibernateException;
-	
+
 	/**
 	 * Get the name of this collection role (the fully qualified class name,
 	 * extended by a "property path")
@@ -249,22 +253,22 @@ public interface CollectionPersister extends CollectionDefinition {
 	 * foreign key constraint definition?
 	 */
 	boolean isCascadeDeleteEnabled();
-	
+
 	/**
-	 * Does this collection cause version increment of the 
+	 * Does this collection cause version increment of the
 	 * owning entity?
 	 */
 	boolean isVersioned();
-	
+
 	/**
 	 * Can the elements of this collection change?
 	 */
 	boolean isMutable();
-	
+
 	//public boolean isSubselectLoadable();
-	
+
 	void postInstantiate() throws MappingException;
-	
+
 	SessionFactoryImplementor getFactory();
 
 	boolean isAffectedByEnabledFilters(SharedSessionContractImplementor session);
@@ -304,7 +308,7 @@ public interface CollectionPersister extends CollectionDefinition {
 	 * @return The key column aliases.
 	 */
 	String getIdentifierColumnAlias(String suffix);
-	
+
 	boolean isExtraLazy();
 	int getSize(Serializable key, SharedSessionContractImplementor session);
 	boolean indexExists(Serializable key, Object index, SharedSessionContractImplementor session);

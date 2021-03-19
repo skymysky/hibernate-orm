@@ -72,8 +72,7 @@ public class SchemaUpdate {
 		exceptions.clear();
 		LOG.runningHbm2ddlSchemaUpdate();
 
-		Map config = new HashMap();
-		config.putAll( serviceRegistry.getService( ConfigurationService.class ).getSettings() );
+		Map config = new HashMap( serviceRegistry.getService( ConfigurationService.class ).getSettings() );
 		config.put( AvailableSettings.HBM2DDL_DELIMITER, delimiter );
 		config.put( AvailableSettings.FORMAT_SQL, format );
 
@@ -154,7 +153,6 @@ public class SchemaUpdate {
 		}
 		catch (Exception e) {
 			LOG.unableToRunSchemaUpdate( e );
-			e.printStackTrace();
 		}
 	}
 

@@ -48,7 +48,7 @@ public class IdentNode extends FromReferenceNode implements SelectExpression {
 	public void resolveIndex(AST parent) throws SemanticException {
 		// An ident node can represent an index expression if the ident
 		// represents a naked property ref
-		//      *Note: this makes the assumption (which is currently the case
+		//      *Note*: this makes the assumption (which is currently the case
 		//      in the hql-sql grammar) that the ident is first resolved
 		//      itself (addrExpr -> resolve()).  The other option, if that
 		//      changes, is to call resolve from here; but it is
@@ -95,7 +95,7 @@ public class IdentNode extends FromReferenceNode implements SelectExpression {
 	}
 	
 	private void initText(String[] columns) {
-		String text = StringHelper.join( ", ", columns );
+		String text = String.join( ", ", columns );
 		if ( columns.length > 1 && getWalker().isComparativeExpressionClause() ) {
 			text = "(" + text + ")";
 		}
@@ -197,14 +197,6 @@ public class IdentNode extends FromReferenceNode implements SelectExpression {
 
 		String[] columnExpressions = element.getIdentityColumns();
 
-		// determine whether to apply qualification (table alias) to the column(s)...
-		if ( ! isFromElementUpdateOrDeleteRoot( element ) ) {
-			if ( StringHelper.isNotEmpty( element.getTableAlias() ) ) {
-				// apparently we also need to check that they are not already qualified.  Ugh!
-				columnExpressions = StringHelper.qualifyIfNot( element.getTableAlias(), columnExpressions );
-			}
-		}
-
 		final Dialect dialect = getWalker().getSessionFactoryHelper().getFactory().getDialect();
 		final boolean isInCount = getWalker().isInCount();
 		final boolean isInDistinctCount = isInCount && getWalker().isInCountDistinct();
@@ -216,12 +208,13 @@ public class IdentNode extends FromReferenceNode implements SelectExpression {
 				setText( columnExpressions[0] );
 			}
 			else {
-				String joinedFragment = StringHelper.join( ", ", columnExpressions );
+				String joinedFragment = String.join( ", ", columnExpressions );
 				// avoid wrapping in parenthesis (explicit tuple treatment) if possible due to varied support for
 				// tuple syntax across databases..
 				final boolean shouldSkipWrappingInParenthesis =
 						(isInDistinctCount && ! dialect.requiresParensForTupleDistinctCounts())
 						|| isInNonDistinctCount
+						|| getWalker().isInSelect() && !getWalker().isInCase() && !isInCount && dialect.supportsTuplesInSubqueries() // HHH-14156
 						|| getWalker().getCurrentTopLevelClauseType() == HqlSqlTokenTypes.ORDER
 						|| getWalker().getCurrentTopLevelClauseType() == HqlSqlTokenTypes.GROUP;
 				if ( ! shouldSkipWrappingInParenthesis ) {
@@ -277,7 +270,7 @@ public class IdentNode extends FromReferenceNode implements SelectExpression {
 		String[] columns = getWalker().isSelectStatement()
 				? persister.toColumns(fromElement.getTableAlias(), property)
 				: persister.toColumns(property);
-		String text = StringHelper.join(", ", columns);
+		String text = String.join(", ", columns);
 		setText(columns.length == 1 ? text : "(" + text + ")");
 		setType(SqlTokenTypes.SQL_TOKEN);
 
@@ -380,7 +373,7 @@ public class IdentNode extends FromReferenceNode implements SelectExpression {
 
 	public void setScalarColumnText(int i) throws SemanticException {
 		if (nakedPropertyRef) {
-			// do *not* over-write the column text, as that has already been
+			// do *not* overwrite the column text, as that has already been
 			// "rendered" during resolve
 			ColumnHelper.generateSingleScalarColumn(this, i);
 		}

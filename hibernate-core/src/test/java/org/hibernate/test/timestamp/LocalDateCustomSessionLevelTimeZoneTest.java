@@ -13,12 +13,12 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 
 import org.hibernate.cfg.AvailableSettings;
-import org.hibernate.dialect.MySQLDialect;
+import org.hibernate.dialect.MySQL5Dialect;
 
 import org.hibernate.testing.RequiresDialect;
 import org.hibernate.testing.TestForIssue;
-import org.hibernate.testing.junit4.BaseNonConfigCoreFunctionalTestCase;
 import org.hibernate.testing.jdbc.ConnectionProviderDelegate;
+import org.hibernate.testing.junit4.BaseNonConfigCoreFunctionalTestCase;
 import org.junit.Test;
 
 import static org.hibernate.testing.transaction.TransactionUtil.doInHibernateSessionBuilder;
@@ -27,7 +27,7 @@ import static org.junit.Assert.assertEquals;
 /**
  * @author Vlad Mihalcea
  */
-@RequiresDialect(MySQLDialect.class)
+@RequiresDialect(MySQL5Dialect.class)
 public class LocalDateCustomSessionLevelTimeZoneTest
 		extends BaseNonConfigCoreFunctionalTestCase {
 
@@ -44,7 +44,8 @@ public class LocalDateCustomSessionLevelTimeZoneTest
 			else if(!url.endsWith( "&" )) {
 				url += "&";
 			}
-			url += "zeroDateTimeBehavior=convertToNull&useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Europe/Berlin";
+
+			url += "useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Europe/Berlin";
 
 			configurationValues.put( AvailableSettings.URL, url);
 			super.configure( configurationValues );

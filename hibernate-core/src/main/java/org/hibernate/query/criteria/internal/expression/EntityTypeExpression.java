@@ -23,15 +23,11 @@ public class EntityTypeExpression<T> extends ExpressionImpl<T> implements Serial
 	}
 
 	public void registerParameters(ParameterRegistry registry) {
-		// nothign to do
+		// nothing to do
 	}
 
 	public String render(RenderingContext renderingContext) {
 		// todo : is it valid for this to get rendered into the query itself?
 		throw new IllegalArgumentException( "Unexpected call on EntityTypeExpression#render" );
-	}
-
-	public String renderProjection(RenderingContext renderingContext) {
-		return render( renderingContext );
 	}
 }

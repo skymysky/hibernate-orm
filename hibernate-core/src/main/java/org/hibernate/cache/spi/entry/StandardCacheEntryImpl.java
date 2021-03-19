@@ -27,8 +27,8 @@ import org.hibernate.type.TypeHelper;
  * @author Steve Ebersole
  */
 public class StandardCacheEntryImpl implements CacheEntry {
+
 	private final Serializable[] disassembledState;
-	private String disassembledStateText;
 	private final Object version;
 	private final String subclass;
 
@@ -57,18 +57,12 @@ public class StandardCacheEntryImpl implements CacheEntry {
 				session,
 				owner
 		);
-		this.disassembledStateText = TypeHelper.toLoggableString(
-				state,
-				persister.getPropertyTypes(),
-				session.getFactory()
-		);
 		this.subclass = persister.getEntityName();
 		this.version = version;
 	}
 
-	StandardCacheEntryImpl(Serializable[] disassembledState, String disassembledStateText, String subclass, Object version) {
+	StandardCacheEntryImpl(Serializable[] disassembledState, String subclass, Object version) {
 		this.disassembledState = disassembledState;
-		this.disassembledStateText = disassembledStateText;
 		this.subclass = subclass;
 		this.version = version;
 	}
@@ -83,7 +77,7 @@ public class StandardCacheEntryImpl implements CacheEntry {
 	@Override
 	public Serializable[] getDisassembledState() {
 		// todo: this was added to support initializing an entity's EntityEntry snapshot during reattach;
-		// this should be refactored to instead expose a method to assemble a EntityEntry based on this
+		// this should be refactored to instead expose a method to assemble an EntityEntry based on this
 		// state for return.
 		return disassembledState;
 	}
@@ -144,14 +138,6 @@ public class StandardCacheEntryImpl implements CacheEntry {
 				session, instance
 		);
 
-		if ( disassembledStateText == null ) {
-			disassembledStateText = TypeHelper.toLoggableString(
-					state,
-					persister.getPropertyTypes(),
-					session.getFactory()
-			);
-		}
-
 		//persister.setIdentifier(instance, id); //before calling interceptor, for consistency with normal load
 
 		//TODO: reuse the PreLoadEvent
@@ -177,6 +163,7 @@ public class StandardCacheEntryImpl implements CacheEntry {
 
 	@Override
 	public String toString() {
-		return "CacheEntry(" + subclass + " {" + disassembledStateText + "})";
+		return "CacheEntry(" + subclass + ')';
 	}
+
 }

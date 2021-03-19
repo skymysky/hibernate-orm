@@ -187,11 +187,11 @@ public interface AvailableSettings {
 	String SCHEMA_GEN_SCRIPTS_DROP_TARGET = org.hibernate.cfg.AvailableSettings.HBM2DDL_SCRIPTS_DROP_TARGET;
 
 	/**
-	 * @deprecated (since 5.2) use {@link org.hibernate.cfg.AvailableSettings#HBM2DLL_CREATE_NAMESPACES}
-	 * or {@link org.hibernate.cfg.AvailableSettings#HBM2DLL_CREATE_SCHEMAS} instead
+	 * @deprecated (since 5.2) use {@link org.hibernate.cfg.AvailableSettings#HBM2DDL_CREATE_NAMESPACES}
+	 * or {@link org.hibernate.cfg.AvailableSettings#HBM2DDL_CREATE_SCHEMAS} instead
 	 */
 	@Deprecated
-	String SCHEMA_GEN_CREATE_SCHEMAS = org.hibernate.cfg.AvailableSettings.HBM2DLL_CREATE_NAMESPACES;
+	String SCHEMA_GEN_CREATE_SCHEMAS = org.hibernate.cfg.AvailableSettings.HBM2DDL_CREATE_NAMESPACES;
 
 	/**
 	 * @deprecated (since 5.2) use {@link org.hibernate.cfg.AvailableSettings#HBM2DDL_CONNECTION} instead
@@ -228,6 +228,27 @@ public interface AvailableSettings {
 	// Hibernate specific settings
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+	/**
+	 * Setting that indicates whether to build the JPA types. Accepts
+	 * 3 values:<ul>
+	 *     <li>
+	 *         <b>enabled</b> - Do the build
+	 *     </li>
+	 *     <li>
+	 *         <b>disabled</b> - Do not do the build
+	 *     </li>
+	 *     <li>
+	 *         <b>ignoreUnsupported</b> - Do the build, but ignore any non-JPA features that would otherwise
+	 *         result in a failure.
+	 *     </li>
+	 * </ul>
+	 *
+	 * @deprecated use {@link org.hibernate.cfg.AvailableSettings#STATIC_METAMODEL_POPULATION} instead
+	 */
+	@Deprecated
+	String JPA_METAMODEL_POPULATION = "hibernate.ejb.metamodel.population";
+
 	/**
 	 * @deprecated (since 5.2) use {@link org.hibernate.cfg.AvailableSettings#INTERCEPTOR} instead
 	 */
@@ -262,14 +283,14 @@ public interface AvailableSettings {
 
 	/**
 	 * Caching configuration should follow the following pattern
-	 * hibernate.ejb.classcache.<fully.qualified.Classname> usage[, region]
+	 * {@code hibernate.ejb.classcache.<fully.qualified.Classname> usage[, region]}
 	 * where usage is the cache strategy used and region the cache region name
 	 */
 	String CLASS_CACHE_PREFIX = "hibernate.ejb.classcache";
 
 	/**
 	 * Caching configuration should follow the following pattern
-	 * hibernate.ejb.collectioncache.<fully.qualified.Classname>.<role> usage[, region]
+	 * {@code hibernate.ejb.collectioncache.<fully.qualified.Classname>.<role> usage[, region]}
 	 * where usage is the cache strategy used and region the cache region name
 	 */
 	String COLLECTION_CACHE_PREFIX = "hibernate.ejb.collectioncache";

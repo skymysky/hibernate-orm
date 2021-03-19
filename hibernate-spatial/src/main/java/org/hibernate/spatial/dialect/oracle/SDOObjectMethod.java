@@ -36,20 +36,20 @@ class SDOObjectMethod implements SQLFunction {
 	}
 
 	/*
-		  * (non-Javadoc)
-		  *
-		  * @see org.hibernate.dialect.function.SQLFunction#hasArguments()
-		  */
+	 * (non-Javadoc)
+	 *
+	 * @see org.hibernate.dialect.function.SQLFunction#hasArguments()
+	 */
 
 	public boolean hasArguments() {
 		return true;
 	}
 
 	/*
-		  * (non-Javadoc)
-		  *
-		  * @see org.hibernate.dialect.function.SQLFunction#hasParenthesesIfNoArguments()
-		  */
+	 * (non-Javadoc)
+	 *
+	 * @see org.hibernate.dialect.function.SQLFunction#hasParenthesesIfNoArguments()
+	 */
 
 	public boolean hasParenthesesIfNoArguments() {
 		return true;
@@ -60,14 +60,14 @@ class SDOObjectMethod implements SQLFunction {
 	}
 
 	/*
-		  * (non-Javadoc)
-		  *
-		  * @see org.hibernate.dialect.function.SQLFunction#render(java.util.List,
-		  *      org.hibernate.engine.SessionFactoryImplementor)
-		  */
+	 * (non-Javadoc)
+	 *
+	 * @see org.hibernate.dialect.function.SQLFunction#render(java.util.List,
+	 *      org.hibernate.engine.SessionFactoryImplementor)
+	 */
 
 	public String render(Type firstArgumentType, List args, SessionFactoryImplementor factory) throws QueryException {
-		final StringBuffer buf = new StringBuffer();
+		final StringBuilder buf = new StringBuilder();
 		if ( args.isEmpty() ) {
 			throw new QueryException(
 					"First Argument in arglist must be object to which method is applied"

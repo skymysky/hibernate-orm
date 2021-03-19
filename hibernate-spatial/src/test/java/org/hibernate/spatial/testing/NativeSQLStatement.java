@@ -29,5 +29,7 @@ public interface NativeSQLStatement {
 	 *
 	 * @throws SQLException
 	 */
-	public PreparedStatement prepare(Connection connection) throws SQLException;
+	PreparedStatement prepare(Connection connection) throws SQLException;
+
+	String toString();
 }

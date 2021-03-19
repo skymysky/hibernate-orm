@@ -7,7 +7,6 @@
 
 package org.hibernate.spatial.testing;
 
-import javax.sql.DataSource;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -15,6 +14,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -23,16 +23,18 @@ import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import javax.sql.DataSource;
 
-import org.apache.commons.dbcp.BasicDataSource;
+import org.hibernate.spatial.HSMessageLogger;
+
+import org.jboss.logging.Logger;
+
+
+import org.apache.commons.dbcp2.BasicDataSource;
 import org.geolatte.geom.Geometry;
 import org.geolatte.geom.codec.Wkt;
 import org.geolatte.geom.codec.WktDecodeException;
 import org.geolatte.geom.codec.WktDecoder;
-
-import org.jboss.logging.Logger;
-
-import org.hibernate.spatial.HSMessageLogger;
 
 /**
  * <p>Unit testsuite-suite support class.</p>
@@ -42,7 +44,7 @@ import org.hibernate.spatial.HSMessageLogger;
 public class DataSourceUtils {
 
 
-	private static HSMessageLogger LOG = Logger.getMessageLogger(
+	private static final HSMessageLogger LOG = Logger.getMessageLogger(
 			HSMessageLogger.class,
 			DataSourceUtils.class.getName()
 	);
@@ -104,6 +106,14 @@ public class DataSourceUtils {
 		createBasicDataSource();
 	}
 
+	private static int sum(int[] insCounts) {
+		int result = 0;
+		for ( int idx = 0; idx < insCounts.length; idx++ ) {
+			result += insCounts[idx];
+		}
+		return result;
+	}
+
 	private Properties readProperties(String propertyFile) {
 		InputStream is = null;
 		try {
@@ -116,7 +126,7 @@ public class DataSourceUtils {
 			return properties;
 		}
 		catch (IOException e) {
-			throw (new RuntimeException( e ));
+			throw ( new RuntimeException( e ) );
 		}
 		finally {
 			if ( is != null ) {
@@ -139,14 +149,13 @@ public class DataSourceUtils {
 		dataSource = bds;
 	}
 
-
 	/**
 	 * Closes the connections to the database.
 	 *
 	 * @throws SQLException
 	 */
 	public void close() throws SQLException {
-		((BasicDataSource) dataSource).close();
+		( (BasicDataSource) dataSource ).close();
 	}
 
 	/**
@@ -233,7 +242,6 @@ public class DataSourceUtils {
 		}
 	}
 
-
 	/**
 	 * Parses the content of a file into an executable SQL statement.
 	 *
@@ -251,7 +259,7 @@ public class DataSourceUtils {
 		BufferedReader reader = null;
 		try {
 			reader = new BufferedReader(
-					new InputStreamReader( is, Charset.forName( "UTF-8" ) )
+					new InputStreamReader( is, StandardCharsets.UTF_8 )
 			);
 
 			StringWriter sw = new StringWriter();
@@ -396,14 +404,6 @@ public class DataSourceUtils {
 					throw new RuntimeException( e );
 				}
 			}
-		}
-		return result;
-	}
-
-	private static int sum(int[] insCounts) {
-		int result = 0;
-		for ( int idx = 0; idx < insCounts.length; idx++ ) {
-			result += insCounts[idx];
 		}
 		return result;
 	}

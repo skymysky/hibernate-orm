@@ -8,11 +8,6 @@
 //$Id: FumTest.java 10977 2006-12-12 23:28:04Z steve.ebersole@jboss.com $
 package org.hibernate.test.legacy;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,7 +16,6 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -51,15 +45,23 @@ import org.hibernate.dialect.MySQLDialect;
 import org.hibernate.dialect.PointbaseDialect;
 import org.hibernate.dialect.SybaseASE15Dialect;
 import org.hibernate.dialect.TimesTenDialect;
-import org.hibernate.testing.SkipForDialect;
 import org.hibernate.transform.Transformers;
-import org.hibernate.type.CalendarType;
 import org.hibernate.type.EntityType;
 import org.hibernate.type.StandardBasicTypes;
 import org.hibernate.type.StringType;
 import org.hibernate.type.Type;
+
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
+import org.hibernate.testing.SkipForDialect;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+@RequiresDialectFeature(DialectChecks.SupportsNoColumnInsert.class)
 public class FumTest extends LegacyTestCase {
 	private static short fumKeyShort = 1;
 
@@ -466,13 +468,13 @@ public class FumTest extends LegacyTestCase {
 		);
 		Query qu = s.createQuery("select fum.fum, fum , fum.fum from Fum fum");
 		Type[] types = qu.getReturnTypes();
-		assertTrue(types.length==3);
-		for ( int k=0; k<types.length; k++) {
-			assertTrue( types[k]!=null );
+		assertTrue( types.length == 3 );
+		for ( Type type : types ) {
+			assertTrue( type != null );
 		}
-		assertTrue(types[0] instanceof StringType);
-		assertTrue(types[1] instanceof EntityType);
-		assertTrue(types[2] instanceof StringType);
+		assertTrue( types[0] instanceof StringType );
+		assertTrue( types[1] instanceof EntityType );
+		assertTrue( types[2] instanceof StringType );
 		Iterator iter = qu.iterate();
 		int j = 0;
 		while ( iter.hasNext() ) {
@@ -661,7 +663,7 @@ public class FumTest extends LegacyTestCase {
 		m.setBla("bla");
 		Outer d = new Outer();
 		OuterKey did = new OuterKey();
-		did.setMaster(m);
+		did.setRoot(m);
 		did.setDetailId("detail");
 		d.setId(did);
 		d.setBubu("bubu");
@@ -687,10 +689,10 @@ public class FumTest extends LegacyTestCase {
 		s = openSession();
 		s.beginTransaction();
 		d = (Outer) s.load(Outer.class, did);
-		assertTrue( d.getId().getMaster().getId().getSup().getDudu().equals("dudu") );
+		assertTrue( d.getId().getRoot().getId().getSup().getDudu().equals("dudu") );
 		s.delete(d);
-		s.delete( d.getId().getMaster() );
-		s.save( d.getId().getMaster() );
+		s.delete( d.getId().getRoot() );
+		s.save( d.getId().getRoot() );
 		s.save(d);
 		s.getTransaction().commit();
 		s.close();
@@ -701,29 +703,29 @@ public class FumTest extends LegacyTestCase {
 				.setParameter( 0, d.getId().getDetailId(), StandardBasicTypes.STRING )
 				.list()
 				.get(0);
-		s.createQuery( "from Outer o where o.id.master.id.sup.dudu is not null" ).list();
-		s.createQuery( "from Outer o where o.id.master.id.sup.id.akey is not null" ).list();
-		s.createQuery( "from Inner i where i.backOut.id.master.id.sup.id.akey = i.id.bkey" ).list();
-		List l = s.createQuery( "select o.id.master.id.sup.dudu from Outer o where o.id.master.id.sup.dudu is not null" )
+		s.createQuery( "from Outer o where o.id.root.id.sup.dudu is not null" ).list();
+		s.createQuery( "from Outer o where o.id.root.id.sup.id.akey is not null" ).list();
+		s.createQuery( "from Inner i where i.backOut.id.root.id.sup.id.akey = i.id.bkey" ).list();
+		List l = s.createQuery( "select o.id.root.id.sup.dudu from Outer o where o.id.root.id.sup.dudu is not null" )
 				.list();
 		assertTrue(l.size()==1);
-		l = s.createQuery( "select o.id.master.id.sup.id.akey from Outer o where o.id.master.id.sup.id.akey is not null" )
+		l = s.createQuery( "select o.id.root.id.sup.id.akey from Outer o where o.id.root.id.sup.id.akey is not null" )
 				.list();
 		assertTrue(l.size()==1);
 		s.createQuery(
-				"select i.backOut.id.master.id.sup.id.akey from Inner i where i.backOut.id.master.id.sup.id.akey = i.id.bkey"
+				"select i.backOut.id.root.id.sup.id.akey from Inner i where i.backOut.id.root.id.sup.id.akey = i.id.bkey"
 		).list();
-		s.createQuery( "from Outer o where o.id.master.bla = ''" ).list();
-		s.createQuery( "from Outer o where o.id.master.id.one = ''" ).list();
-		s.createQuery( "from Inner inn where inn.id.bkey is not null and inn.backOut.id.master.id.sup.id.akey > 'a'" )
+		s.createQuery( "from Outer o where o.id.root.bla = ''" ).list();
+		s.createQuery( "from Outer o where o.id.root.id.one = ''" ).list();
+		s.createQuery( "from Inner inn where inn.id.bkey is not null and inn.backOut.id.root.id.sup.id.akey > 'a'" )
 				.list();
-		s.createQuery( "from Outer as o left join o.id.master m left join m.id.sup where o.bubu is not null" ).list();
-		s.createQuery( "from Outer as o left join o.id.master.id.sup s where o.bubu is not null" ).list();
-		s.createQuery( "from Outer as o left join o.id.master m left join o.id.master.id.sup s where o.bubu is not null" )
+		s.createQuery( "from Outer as o left join o.id.root m left join m.id.sup where o.bubu is not null" ).list();
+		s.createQuery( "from Outer as o left join o.id.root.id.sup s where o.bubu is not null" ).list();
+		s.createQuery( "from Outer as o left join o.id.root m left join o.id.root.id.sup s where o.bubu is not null" )
 				.list();
 		s.delete(d);
-		s.delete( d.getId().getMaster() );
-		s.delete( d.getId().getMaster().getId().getSup() );
+		s.delete( d.getId().getRoot() );
+		s.delete( d.getId().getRoot().getId().getSup() );
 		s.getTransaction().commit();
 		s.close();
 	}

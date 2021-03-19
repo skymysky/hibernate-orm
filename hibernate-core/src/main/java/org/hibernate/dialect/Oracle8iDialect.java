@@ -10,14 +10,12 @@ import java.sql.CallableStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
-import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.hibernate.JDBCException;
 import org.hibernate.QueryTimeoutException;
-import org.hibernate.annotations.common.util.StringHelper;
 import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.function.NoArgSQLFunction;
 import org.hibernate.dialect.function.NvlFunction;
@@ -46,6 +44,8 @@ import org.hibernate.sql.CaseFragment;
 import org.hibernate.sql.DecodeCaseFragment;
 import org.hibernate.sql.JoinFragment;
 import org.hibernate.sql.OracleJoinFragment;
+import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorOracleDatabaseImpl;
+import org.hibernate.tool.schema.extract.spi.SequenceInformationExtractor;
 import org.hibernate.type.StandardBasicTypes;
 import org.hibernate.type.descriptor.sql.BitTypeDescriptor;
 import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
@@ -66,7 +66,7 @@ public class Oracle8iDialect extends Dialect {
 
 	private static final Pattern UNION_KEYWORD_PATTERN = Pattern.compile( "\\bunion\\b" );
 
-	private static final Pattern SQL_STATEMENT_TYPE_PATTERN = Pattern.compile("^(?:\\/\\*.*?\\*\\/)?\\s*(select|insert|update|delete)\\s+.*?");
+	private static final Pattern SQL_STATEMENT_TYPE_PATTERN = Pattern.compile("^(?:\\/\\*.*?\\*\\/)?\\s*(select|insert|update|delete)\\s+.*?", Pattern.CASE_INSENSITIVE);
 
 	private static final AbstractLimitHandler LIMIT_HANDLER = new AbstractLimitHandler() {
 		@Override
@@ -120,7 +120,7 @@ public class Oracle8iDialect extends Dialect {
 	private static final int PARAM_LIST_SIZE_LIMIT = 1000;
 
 	/**
-	 * Constructs a Oracle8iDialect
+	 * Constructs an Oracle8iDialect
 	 */
 	public Oracle8iDialect() {
 		super();
@@ -340,7 +340,7 @@ public class Oracle8iDialect extends Dialect {
 	 * implementation...
 	 *
 	 * @param sqlType The {@link java.sql.Types} mapping type code
-	 * @return The appropriate select cluse fragment
+	 * @return The appropriate select clause fragment
 	 */
 	public String getBasicSelectClauseNullString(int sqlType) {
 		return super.getSelectClauseNullString( sqlType );
@@ -490,12 +490,11 @@ public class Oracle8iDialect extends Dialect {
 
 	@Override
 	public String getQuerySequencesString() {
-		return    " select sequence_name from all_sequences"
-				+ "  union"
-				+ " select synonym_name"
-				+ "   from all_synonyms us, all_sequences asq"
-				+ "  where asq.sequence_name = us.table_name"
-				+ "    and asq.sequence_owner = us.table_owner";
+		return "select * from all_sequences";
+	}
+
+	public SequenceInformationExtractor getSequenceInformationExtractor() {
+		return SequenceInformationExtractorOracleDatabaseImpl.INSTANCE;
 	}
 
 	@Override
@@ -654,7 +653,7 @@ public class Oracle8iDialect extends Dialect {
 	public boolean supportsEmptyInList() {
 		return false;
 	}
-	
+
 	@Override
 	public boolean supportsExistsInSelect() {
 		return false;
@@ -664,7 +663,7 @@ public class Oracle8iDialect extends Dialect {
 	public int getInExpressionCountLimit() {
 		return PARAM_LIST_SIZE_LIMIT;
 	}
-	
+
 	@Override
 	public boolean forceLobAsLastValue() {
 		return true;
@@ -673,7 +672,8 @@ public class Oracle8iDialect extends Dialect {
 	/**
 	 * For Oracle, the FOR UPDATE clause cannot be applied when using ORDER BY, DISTINCT or views.
 	 * @param parameters
-	 * @return
+	 * @return {@code true} indicates that the dialect requests that locking be applied by subsequent select;
+	 * {@code false} (the default) indicates that locking should be applied to the main SQL statement..
 	 @see <a href="https://docs.oracle.com/database/121/SQLRF/statements_10002.htm#SQLRF01702">Oracle FOR UPDATE restrictions</a>
 	 */
 	@Override
@@ -698,12 +698,12 @@ public class Oracle8iDialect extends Dialect {
 			return true;
 		}
 	}
-	
+
 	@Override
 	public String getNotExpression( String expression ) {
 		return "not (" + expression + ")";
 	}
-	
+
 	@Override
 	public String getQueryHintString(String sql, String hints) {
 		String statementType = statementType(sql);
@@ -725,7 +725,7 @@ public class Oracle8iDialect extends Dialect {
 
 		return sql;
 	}
-	
+
 	@Override
 	public int getMaxAliasLength() {
 		// Oracle's max identifier length is 30, but Hibernate needs to add "uniqueing info" so we account for that,
@@ -744,6 +744,11 @@ public class Oracle8iDialect extends Dialect {
 	}
 
 	@Override
+	public String getCurrentSchemaCommand() {
+		return "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL";
+	}
+
+	@Override
 	public boolean supportsPartitionBy() {
 		return true;
 	}
@@ -756,5 +761,10 @@ public class Oracle8iDialect extends Dialect {
 		}
 
 		throw new IllegalArgumentException( "Can't determine SQL statement type for statement: " + sql );
+	}
+
+	@Override
+	public boolean supportsNoWait() {
+		return true;
 	}
 }

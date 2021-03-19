@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+
 import javax.persistence.Parameter;
 
 import org.hibernate.QueryException;
@@ -33,8 +34,14 @@ import org.hibernate.type.Type;
  * @author Steve Ebersole
  */
 public class ParameterMetadataImpl implements ParameterMetadata {
+
 	private final Map<Integer,OrdinalParameterDescriptor> ordinalDescriptorMap;
 	private final Map<String,NamedParameterDescriptor> namedDescriptorMap;
+
+	//Important: queries with large amounts of parameters need the following
+	//cache to have efficient performance on #containsReference(QueryParameter).
+	private final Set<QueryParameter> ordinalDescriptorValueCache;
+	private final Set<QueryParameter> namedDescriptorValueCache;
 
 	public ParameterMetadataImpl(
 			Map<Integer,OrdinalParameterDescriptor> ordinalDescriptorMap,
@@ -42,9 +49,15 @@ public class ParameterMetadataImpl implements ParameterMetadata {
 		this.ordinalDescriptorMap = ordinalDescriptorMap == null
 				? Collections.emptyMap()
 				: Collections.unmodifiableMap( ordinalDescriptorMap );
+		this.ordinalDescriptorValueCache = this.ordinalDescriptorMap.isEmpty()
+				? Collections.emptySet()
+				: Collections.unmodifiableSet( new HashSet<>( this.ordinalDescriptorMap.values() ) );
 		this.namedDescriptorMap = namedDescriptorMap == null
 				? Collections.emptyMap()
 				: Collections.unmodifiableMap( namedDescriptorMap );
+		this.namedDescriptorValueCache = this.namedDescriptorMap.isEmpty()
+				? Collections.emptySet()
+				: Collections.unmodifiableSet( new HashSet<>( this.namedDescriptorMap.values() ) );
 
 		if (ordinalDescriptorMap != null &&  ! ordinalDescriptorMap.isEmpty() ) {
 			final List<Integer> sortedPositions = new ArrayList<>( ordinalDescriptorMap.keySet() );
@@ -64,7 +77,7 @@ public class ParameterMetadataImpl implements ParameterMetadata {
 									"Unexpected gap in ordinal parameter labels [%s -> %s] : [%s]",
 									lastPosition,
 									sortedPosition,
-									StringHelper.join( ",", sortedPositions )
+									StringHelper.join( ",", sortedPositions.iterator() )
 							)
 					);
 				}
@@ -77,14 +90,13 @@ public class ParameterMetadataImpl implements ParameterMetadata {
 
 	@Override
 	public Collection<QueryParameter> getPositionalParameters() {
-		return Collections.unmodifiableCollection( ordinalDescriptorMap.values() );
+		return ordinalDescriptorValueCache;
 	}
 
 	@Override
 	public Collection<QueryParameter> getNamedParameters() {
-		return Collections.unmodifiableCollection( namedDescriptorMap.values() );
+		return namedDescriptorValueCache;
 	}
-
 
 	@Override
 	public int getParameterCount() {
@@ -94,8 +106,8 @@ public class ParameterMetadataImpl implements ParameterMetadata {
 	@Override
 	@SuppressWarnings("SuspiciousMethodCalls")
 	public boolean containsReference(QueryParameter parameter) {
-		return ordinalDescriptorMap.containsValue( parameter )
-				|| namedDescriptorMap.containsValue( parameter );
+		return ordinalDescriptorValueCache.contains( parameter )
+				|| namedDescriptorValueCache.contains( parameter );
 	}
 
 	@Override
@@ -143,7 +155,7 @@ public class ParameterMetadataImpl implements ParameterMetadata {
 							Locale.ROOT,
 							"Could not locate ordinal parameter [%s], expecting one of [%s]",
 							position,
-							StringHelper.join( ", ", ordinalDescriptorMap.keySet() )
+							StringHelper.join( ", ", ordinalDescriptorMap.keySet().iterator())
 					)
 			);
 		}
@@ -218,7 +230,7 @@ public class ParameterMetadataImpl implements ParameterMetadata {
 							Locale.ROOT,
 							"Could not locate named parameter [%s], expecting one of [%s]",
 							name,
-							StringHelper.join( ", ", namedDescriptorMap.keySet() )
+							String.join( ", ", namedDescriptorMap.keySet() )
 					)
 			);
 		}

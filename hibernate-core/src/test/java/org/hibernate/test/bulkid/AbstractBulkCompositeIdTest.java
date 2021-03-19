@@ -3,7 +3,6 @@ package org.hibernate.test.bulkid;
 import java.io.Serializable;
 import java.util.Objects;
 import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
 import javax.persistence.Inheritance;
 import javax.persistence.InheritanceType;
@@ -12,8 +11,6 @@ import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
 
-import org.hibernate.testing.DialectChecks;
-import org.hibernate.testing.RequiresDialectFeature;
 import org.hibernate.testing.junit4.BaseCoreFunctionalTestCase;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,7 +35,10 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 	@Override
 	protected Configuration constructConfiguration() {
 		Configuration configuration = super.constructConfiguration();
-		configuration.setProperty( AvailableSettings.HQL_BULK_ID_STRATEGY, getMultiTableBulkIdStrategyClass().getName() );
+		Class<? extends MultiTableBulkIdStrategy> strategyClass = getMultiTableBulkIdStrategyClass();
+		if ( strategyClass != null ) {
+			configuration.setProperty( AvailableSettings.HQL_BULK_ID_STRATEGY, strategyClass.getName() );
+		}
 		return configuration;
 	}
 
@@ -77,7 +77,7 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 	}
 
 	protected int entityCount() {
-		return 100;
+		return 4;
 	}
 
 	@Test
@@ -95,9 +95,12 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 	@Test
 	public void testDeleteFromPerson() {
 		doInHibernate( this::sessionFactory, session -> {
-			int updateCount = session.createQuery( "delete from Person where employed = :employed" )
-					.setParameter( "employed", false )
-					.executeUpdate();
+			//tag::batch-bulk-hql-temp-table-delete-query-example[]
+			int updateCount = session.createQuery(
+				"delete from Person where employed = :employed" )
+			.setParameter( "employed", false )
+			.executeUpdate();
+			//end::batch-bulk-hql-temp-table-delete-query-example[]
 			assertEquals( entityCount(), updateCount );
 		});
 	}
@@ -112,6 +115,7 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 		});
 	}
 
+	//tag::batch-bulk-hql-temp-table-base-class-example[]
 	@Entity(name = "Person")
 	@Inheritance(strategy = InheritanceType.JOINED)
 	public static class Person implements Serializable {
@@ -125,6 +129,10 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 		private String name;
 
 		private boolean employed;
+
+		//Getters and setters are omitted for brevity
+
+	//end::batch-bulk-hql-temp-table-base-class-example[]
 
 		public Integer getId() {
 			return id;
@@ -175,8 +183,11 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 		public int hashCode() {
 			return Objects.hash( getId(), getCompanyName() );
 		}
+	//tag::batch-bulk-hql-temp-table-base-class-example[]
 	}
+	//end::batch-bulk-hql-temp-table-base-class-example[]
 
+	//tag::batch-bulk-hql-temp-table-sub-classes-example[]
 	@Entity(name = "Doctor")
 	public static class Doctor extends Person {
 	}
@@ -186,6 +197,10 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 
 		private boolean fellow;
 
+		//Getters and setters are omitted for brevity
+
+	//end::batch-bulk-hql-temp-table-sub-classes-example[]
+
 		public boolean isFellow() {
 			return fellow;
 		}
@@ -193,5 +208,7 @@ public abstract class AbstractBulkCompositeIdTest extends BaseCoreFunctionalTest
 		public void setFellow(boolean fellow) {
 			this.fellow = fellow;
 		}
+	//tag::batch-bulk-hql-temp-table-sub-classes-example[]
 	}
+	//end::batch-bulk-hql-temp-table-sub-classes-example[]
 }

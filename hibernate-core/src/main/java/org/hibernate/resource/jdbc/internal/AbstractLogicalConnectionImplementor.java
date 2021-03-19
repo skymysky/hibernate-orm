@@ -49,6 +49,11 @@ public abstract class AbstractLogicalConnectionImplementor implements LogicalCon
 	}
 
 	@Override
+	public void beforeTransactionCompletion() {
+		log.trace( "LogicalConnection#beforeTransactionCompletion" );
+	}
+
+	@Override
 	public void afterTransaction() {
 		log.trace( "LogicalConnection#afterTransaction" );
 
@@ -118,6 +123,7 @@ public abstract class AbstractLogicalConnectionImplementor implements LogicalCon
 			log.trace( "Transaction rolled-back via JDBC Connection.rollback()" );
 		}
 		catch( SQLException e ) {
+			status = TransactionStatus.FAILED_ROLLBACK;
 			throw new TransactionException( "Unable to rollback against JDBC Connection", e );
 		}
 

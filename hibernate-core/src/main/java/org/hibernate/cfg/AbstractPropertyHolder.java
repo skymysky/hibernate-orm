@@ -124,7 +124,7 @@ public abstract class AbstractPropertyHolder implements PropertyHolder {
 			return new ClassBasedConverterDescriptor(
 					conversion.getConverterClass(),
 					false,
-					context.getMetadataCollector().getClassmateContext()
+					context.getBootstrapContext().getClassmateContext()
 			);
 		}
 		catch (Exception e) {
@@ -157,7 +157,7 @@ public abstract class AbstractPropertyHolder implements PropertyHolder {
 	}
 
 	/**
-	 * Set the property be processed.  property can be null
+	 * Set the property to be processed.  property can be null
 	 *
 	 * @param property The property
 	 */
@@ -207,7 +207,7 @@ public abstract class AbstractPropertyHolder implements PropertyHolder {
 	 		//  - the property uses some restricted values
 	 		//  - the user has overridden the column
 			// also change getOverriddenJoinColumn and getOverriddenJoinTable as well
-	 		
+
 //			if ( propertyName.contains( ".key." ) ) {
 //				//support for legacy @AttributeOverride declarations
 //				//TODO cache the underlying regexp
@@ -372,7 +372,7 @@ public abstract class AbstractPropertyHolder implements PropertyHolder {
 		Map<String, JoinColumn[]> joinColumnOverride = new HashMap<String, JoinColumn[]>();
 		Map<String, JoinTable> joinTableOverride = new HashMap<String, JoinTable>();
 		Map<String, ForeignKey> foreignKeyOverride = new HashMap<String, ForeignKey>();
-		while ( current != null && !context.getBuildingOptions().getReflectionManager().toXClass( Object.class ).equals( current ) ) {
+		while ( current != null && !context.getBootstrapContext().getReflectionManager().toXClass( Object.class ).equals( current ) ) {
 			if ( current.isAnnotationPresent( Entity.class ) || current.isAnnotationPresent( MappedSuperclass.class )
 					|| current.isAnnotationPresent( Embeddable.class ) ) {
 				//FIXME is embeddable override?

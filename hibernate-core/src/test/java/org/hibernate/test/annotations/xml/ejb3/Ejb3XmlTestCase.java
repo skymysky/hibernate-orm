@@ -15,9 +15,9 @@ import org.dom4j.io.SAXReader;
 
 import org.hibernate.cfg.annotations.reflection.JPAOverriddenAnnotationReader;
 import org.hibernate.cfg.annotations.reflection.XMLContext;
-import org.hibernate.testing.junit4.BaseUnitTestCase;
 
-import org.hibernate.testing.boot.ClassLoaderAccessTestingImpl;
+import org.hibernate.testing.boot.BootstrapContextImpl;
+import org.hibernate.testing.junit4.BaseUnitTestCase;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -49,7 +49,7 @@ abstract class Ejb3XmlTestCase extends BaseUnitTestCase {
 			throws Exception {
 		AnnotatedElement el = getAnnotatedElement( entityClass, fieldName );
 		XMLContext xmlContext = getContext( ormResourceName );
-		return new JPAOverriddenAnnotationReader( el, xmlContext, ClassLoaderAccessTestingImpl.INSTANCE );
+		return new JPAOverriddenAnnotationReader( el, xmlContext, BootstrapContextImpl.INSTANCE );
 	}
 
 	protected AnnotatedElement getAnnotatedElement(Class<?> entityClass, String fieldName) throws Exception {
@@ -63,8 +63,12 @@ abstract class Ejb3XmlTestCase extends BaseUnitTestCase {
 	}
 
 	protected XMLContext getContext(InputStream is) throws Exception {
-		XMLContext xmlContext = new XMLContext( ClassLoaderAccessTestingImpl.INSTANCE );
-		Document doc = new SAXReader().read( is );
+		XMLContext xmlContext = new XMLContext( BootstrapContextImpl.INSTANCE );
+		SAXReader reader = new SAXReader();
+		reader.setFeature( "http://apache.org/xml/features/nonvalidating/load-external-dtd", false );
+		reader.setFeature( "http://xml.org/sax/features/external-general-entities", false );
+		reader.setFeature( "http://xml.org/sax/features/external-parameter-entities", false );
+		Document doc = reader.read( is );
 		xmlContext.addDocument( doc );
 		return xmlContext;
 	}

@@ -10,7 +10,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 
-import org.hibernate.internal.util.StringHelper;
 import org.hibernate.loader.EntityAliases;
 import org.hibernate.loader.plan.exec.spi.AliasResolutionContext;
 import org.hibernate.loader.plan.exec.spi.CollectionReferenceAliases;
@@ -35,6 +34,8 @@ public class QuerySpaceTreePrinter {
 	 * Singleton access
 	 */
 	public static final QuerySpaceTreePrinter INSTANCE = new QuerySpaceTreePrinter();
+
+	private static final int detailDepthOffset = 1;
 
 	private QuerySpaceTreePrinter() {
 	}
@@ -63,7 +64,7 @@ public class QuerySpaceTreePrinter {
 	 * An indentation is defined as the number of characters defined by {@link TreePrinterHelper#INDENTATION}.
 	 *
 	 * @param spaces The {@link QuerySpaces} object.
-	 * @param depth The intial number of indentations
+	 * @param depth The initial number of indentations
 	 * @param aliasResolutionContext The context for resolving table and column aliases
 	 *        for the {@link QuerySpace} references in <code>spaces</code>; if null,
 	 *        table and column aliases are not included in returned value..
@@ -88,7 +89,7 @@ public class QuerySpaceTreePrinter {
 	 * An indentation is defined as the number of characters defined by {@link TreePrinterHelper#INDENTATION}.
 	 *
 	 * @param spaces The {@link QuerySpaces} object.
-	 * @param depth The intial number of indentations
+	 * @param depth The initial number of indentations
 	 * @param aliasResolutionContext The context for resolving table and column aliases
 	 *        for the {@link QuerySpace} references in <code>spaces</code>; if null,
 	 *        table and column aliases are not included in returned value.
@@ -113,7 +114,7 @@ public class QuerySpaceTreePrinter {
 	 * An indentation is defined as the number of characters defined by {@link TreePrinterHelper#INDENTATION}.
 	 *
 	 * @param spaces The {@link QuerySpaces} object.
-	 * @param depth The intial number of indentations
+	 * @param depth The initial number of indentations
 	 * @param aliasResolutionContext The context for resolving table and column aliases
 	 *        for the {@link QuerySpace} references in <code>spaces</code>; if null,
 	 *        table and column aliases are not included in returned value.
@@ -147,8 +148,6 @@ public class QuerySpaceTreePrinter {
 		writeJoins( querySpace.getJoins(), depth + 1, aliasResolutionContext, printWriter );
 	}
 
-	final int detailDepthOffset = 1;
-
 	private void generateDetailLines(
 			QuerySpace querySpace,
 			int depth,
@@ -180,7 +179,7 @@ public class QuerySpaceTreePrinter {
 			printWriter.println(
 					TreePrinterHelper.INSTANCE.generateNodePrefix( depth + detailDepthOffset )
 							+ "suffixed key columns - {"
-							+ StringHelper.join( ", ", entityAliases.getColumnAliases().getSuffixedKeyAliases() )
+							+ String.join( ", ", entityAliases.getColumnAliases().getSuffixedKeyAliases() )
 							+ "}"
 			);
 		}
@@ -193,7 +192,7 @@ public class QuerySpaceTreePrinter {
 			printWriter.println(
 					TreePrinterHelper.INSTANCE.generateNodePrefix( depth + detailDepthOffset )
 							+ "suffixed key columns - {"
-							+ StringHelper.join( ", ", collectionReferenceAliases.getCollectionColumnAliases().getSuffixedKeyAliases() )
+							+ String.join( ", ", collectionReferenceAliases.getCollectionColumnAliases().getSuffixedKeyAliases() )
 							+ "}"
 			);
 			final EntityAliases elementAliases =
@@ -209,7 +208,7 @@ public class QuerySpaceTreePrinter {
 						TreePrinterHelper.INSTANCE.generateNodePrefix( depth + detailDepthOffset )
 								+ elementAliases.getSuffix()
 								+ "entity-element suffixed key columns - "
-								+ StringHelper.join( ", ", elementAliases.getSuffixedKeyAliases() )
+								+ String.join( ", ", elementAliases.getSuffixedKeyAliases() )
 				);
 			}
 		}
@@ -234,7 +233,7 @@ public class QuerySpaceTreePrinter {
 	 *     <li>query space class name</li>
 	 *     <li>unique ID</li>
 	 *     <li>entity name (for {@link EntityQuerySpace}</li>
-	 *     <li>collection role (for {@link CollectionQuerySpace}</li>	 *
+	 *     <li>collection role (for {@link CollectionQuerySpace}</li>
 	 * </ul>
 	 * @param space The query space
 	 * @return a String containing details about the {@link QuerySpace}

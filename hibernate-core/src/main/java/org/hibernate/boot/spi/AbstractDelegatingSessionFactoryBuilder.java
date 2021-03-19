@@ -6,6 +6,9 @@
  */
 package org.hibernate.boot.spi;
 
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.CustomEntityDirtinessStrategy;
 import org.hibernate.EntityMode;
@@ -17,7 +20,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.SessionFactoryObserver;
 import org.hibernate.boot.SessionFactoryBuilder;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
-import org.hibernate.cache.spi.QueryCacheFactory;
+import org.hibernate.cache.spi.TimestampsCacheFactory;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.hibernate.dialect.function.SQLFunction;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
@@ -27,9 +30,6 @@ import org.hibernate.resource.jdbc.spi.PhysicalConnectionHandlingMode;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.hibernate.tuple.entity.EntityTuplizer;
 import org.hibernate.tuple.entity.EntityTuplizerFactory;
-
-import java.util.Map;
-import java.util.function.Supplier;
 
 /**
  * Convenience base class for custom implementors of SessionFactoryBuilder, using delegation
@@ -194,6 +194,12 @@ public abstract class AbstractDelegatingSessionFactoryBuilder<T extends SessionF
 	}
 
 	@Override
+	public SessionFactoryBuilder applyDelayedEntityLoaderCreations(boolean delay) {
+		delegate.applyDelayedEntityLoaderCreations( delay );
+		return getThis();
+	}
+
+	@Override
 	public T applyDefaultBatchFetchSize(int size) {
 		delegate.applyDefaultBatchFetchSize( size );
 		return getThis();
@@ -279,8 +285,8 @@ public abstract class AbstractDelegatingSessionFactoryBuilder<T extends SessionF
 	}
 
 	@Override
-	public T applyQueryCacheFactory(QueryCacheFactory factory) {
-		delegate.applyQueryCacheFactory( factory );
+	public SessionFactoryBuilder applyTimestampsCacheFactory(TimestampsCacheFactory factory) {
+		delegate.applyTimestampsCacheFactory( factory );
 		return getThis();
 	}
 

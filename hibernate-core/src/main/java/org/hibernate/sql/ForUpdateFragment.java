@@ -69,11 +69,11 @@ public class ForUpdateFragment {
 			}
 		}
 
-		if ( upgradeType == LockMode.UPGRADE_NOWAIT ) {
+		if ( upgradeType == LockMode.UPGRADE_NOWAIT || lockOptions.getTimeOut() == LockOptions.NO_WAIT ) {
 			setNowaitEnabled( true );
 		}
 
-		if ( upgradeType == LockMode.UPGRADE_SKIPLOCKED ) {
+		if ( upgradeType == LockMode.UPGRADE_SKIPLOCKED || lockOptions.getTimeOut() == LockOptions.SKIP_LOCKED ) {
 			setSkipLockedEnabled( true );
 		}
 	}
@@ -101,7 +101,7 @@ public class ForUpdateFragment {
 			}
 			return "";
 		}
-		// TODO:  pass lockmode
+		// TODO:  pass lock mode
 		if(isNowaitEnabled) {
 			return dialect.getForUpdateNowaitString( aliases.toString() );
 		}

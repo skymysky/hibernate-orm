@@ -7,6 +7,7 @@
 package org.hibernate.hql.spi;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -170,6 +171,14 @@ public interface QueryTranslator {
 	boolean containsCollectionFetches();
 
 	boolean isManipulationStatement();
+
+	default boolean isUpdateStatement() {
+		return getQueryString().toLowerCase().trim().startsWith( "update" );
+	}
+
+	default List<String> getPrimaryFromClauseTables() {
+		return new ArrayList<>();
+	}
 
 	Class getDynamicInstantiationResultType();
 }

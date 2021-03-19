@@ -33,13 +33,14 @@ import org.hibernate.exception.LockTimeoutException;
 import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
 import org.hibernate.hql.spi.id.IdTableSupportStandardImpl;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
-import org.hibernate.hql.spi.id.global.GlobalTemporaryTableBulkIdStrategy;
 import org.hibernate.hql.spi.id.local.AfterUseAction;
 import org.hibernate.hql.spi.id.local.LocalTemporaryTableBulkIdStrategy;
-import org.hibernate.internal.CoreLogging;
-import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.util.JdbcExceptionHelper;
+import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorDB2DatabaseImpl;
+import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorNoOpImpl;
+import org.hibernate.tool.schema.extract.spi.SequenceInformationExtractor;
 import org.hibernate.type.StandardBasicTypes;
+import org.hibernate.type.descriptor.sql.DecimalTypeDescriptor;
 import org.hibernate.type.descriptor.sql.SmallIntTypeDescriptor;
 import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
 
@@ -49,7 +50,6 @@ import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
  * @author Gavin King
  */
 public class DB2Dialect extends Dialect {
-	private static final CoreMessageLogger log = CoreLogging.messageLogger( DB2Dialect.class );
 
 	private static final AbstractLimitHandler LIMIT_HANDLER = new AbstractLimitHandler() {
 		@Override
@@ -100,7 +100,12 @@ public class DB2Dialect extends Dialect {
 		registerColumnType( Types.TIME, "time" );
 		registerColumnType( Types.TIMESTAMP, "timestamp" );
 		registerColumnType( Types.VARBINARY, "varchar($l) for bit data" );
-		registerColumnType( Types.NUMERIC, "numeric($p,$s)" );
+		// DB2 converts numeric to decimal under the hood
+		// Note that the type returned by DB2 for a numeric column will be Types.DECIMAL. Thus, we have an issue when
+		// comparing the types during the schema validation, defining the type to decimal here as the type names will
+		// also be compared and there will be a match. See HHH-12827 for the details.
+		registerColumnType( Types.NUMERIC, "decimal($p,$s)" );
+		registerColumnType( Types.DECIMAL, "decimal($p,$s)" );
 		registerColumnType( Types.BLOB, "blob($l)" );
 		registerColumnType( Types.CLOB, "clob($l)" );
 		registerColumnType( Types.LONGVARCHAR, "long varchar" );
@@ -210,7 +215,7 @@ public class DB2Dialect extends Dialect {
 		registerKeyword( "only" );
 
 		getDefaultProperties().setProperty( Environment.STATEMENT_BATCH_SIZE, NO_BATCH );
-		
+
 		uniqueDelegate = new DB2UniqueDelegate( this );
 	}
 
@@ -227,6 +232,11 @@ public class DB2Dialect extends Dialect {
 	@Override
 	public boolean dropConstraints() {
 		return false;
+	}
+
+	@Override
+	public String[] getDropSchemaCommand(String schemaName) {
+		return new String[] {"drop schema " + schemaName + " restrict"};
 	}
 
 	@Override
@@ -261,7 +271,17 @@ public class DB2Dialect extends Dialect {
 
 	@Override
 	public String getQuerySequencesString() {
-		return "select seqname from sysibm.syssequences";
+		return "select * from syscat.sequences";
+	}
+
+	@Override
+	public SequenceInformationExtractor getSequenceInformationExtractor() {
+		if ( getQuerySequencesString() == null ) {
+			return SequenceInformationExtractorNoOpImpl.INSTANCE;
+		}
+		else {
+			return SequenceInformationExtractorDB2DatabaseImpl.INSTANCE;
+		}
 	}
 
 	@Override
@@ -365,7 +385,7 @@ public class DB2Dialect extends Dialect {
 	@Override
 	public ResultSet getResultSet(CallableStatement ps) throws SQLException {
 		boolean isResultSet = ps.execute();
-		// This assumes you will want to ignore any update counts 
+		// This assumes you will want to ignore any update counts
 		while ( !isResultSet && ps.getUpdateCount() != -1 ) {
 			isResultSet = ps.getMoreResults();
 		}
@@ -423,7 +443,7 @@ public class DB2Dialect extends Dialect {
 	/**
 	 * {@inheritDoc}
 	 * <p/>
-	 * NOTE : DB2 is know to support parameters in the <tt>SELECT</tt> clause, but only in casted form
+	 * NOTE : DB2 is known to support parameters in the <tt>SELECT</tt> clause, but only in casted form
 	 * (see {@link #requiresCastingOfParametersInSelectClause()}).
 	 */
 	@Override
@@ -478,7 +498,14 @@ public class DB2Dialect extends Dialect {
 
 	@Override
 	protected SqlTypeDescriptor getSqlTypeDescriptorOverride(int sqlCode) {
-		return sqlCode == Types.BOOLEAN ? SmallIntTypeDescriptor.INSTANCE : super.getSqlTypeDescriptorOverride( sqlCode );
+		if ( sqlCode == Types.BOOLEAN ) {
+			return SmallIntTypeDescriptor.INSTANCE;
+		}
+		else if ( sqlCode == Types.NUMERIC ) {
+			return DecimalTypeDescriptor.INSTANCE;
+		}
+
+		return super.getSqlTypeDescriptorOverride( sqlCode );
 	}
 
 	@Override
@@ -496,12 +523,12 @@ public class DB2Dialect extends Dialect {
 			}
 		};
 	}
-	
+
 	@Override
 	public UniqueDelegate getUniqueDelegate() {
 		return uniqueDelegate;
 	}
-	
+
 	@Override
 	public String getNotExpression( String expression ) {
 		return "not (" + expression + ")";
@@ -523,7 +550,7 @@ public class DB2Dialect extends Dialect {
 	 * if expression has not been explicitly specified.
 	 * @param nullPrecedence Nulls precedence. Default value: {@link NullPrecedence#NONE}.
 	 *
-	 * @return
+	 * @return SQL string.
 	 */
 	@Override
 	public String renderOrderByElement(String expression, String collation, String order, NullPrecedence nullPrecedence) {
@@ -544,7 +571,7 @@ public class DB2Dialect extends Dialect {
 			// we have one of:
 			//		* ASC + NULLS LAST
 			//		* DESC + NULLS FIRST
-			// so just drop the null precedence.  *NOTE: we could pass along the null precedence here,
+			// so just drop the null precedence.  *NOTE*: we could pass along the null precedence here,
 			// but only DB2 9.7 or greater understand it; dropping it is more portable across DB2 versions
 			return super.renderOrderByElement( expression, collation, order, NullPrecedence.NONE );
 		}
@@ -556,7 +583,7 @@ public class DB2Dialect extends Dialect {
 				nullPrecedence == NullPrecedence.FIRST ? "0" : "1",
 				nullPrecedence == NullPrecedence.FIRST ? "1" : "0",
 				expression,
-				order
+				order == null ? "asc" : order
 		);
 	}
 

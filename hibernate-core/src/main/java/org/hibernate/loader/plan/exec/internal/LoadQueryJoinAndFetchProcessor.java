@@ -38,6 +38,7 @@ import org.hibernate.loader.plan.spi.QuerySpace;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.persister.collection.CollectionPropertyNames;
 import org.hibernate.persister.collection.QueryableCollection;
+import org.hibernate.persister.entity.AbstractEntityPersister;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.persister.entity.Joinable;
 import org.hibernate.persister.entity.OuterJoinLoadable;
@@ -70,7 +71,7 @@ public class LoadQueryJoinAndFetchProcessor {
 	private final SessionFactoryImplementor factory;
 
 	/**
-	 * Instantiates a LoadQueryBuilderHelper with the given information
+	 * Instantiates a LoadQueryJoinAndFetchProcessor with the given information
 	 *
 	 * @param aliasResolutionContext
 	 * @param buildingParameters
@@ -257,14 +258,37 @@ public class LoadQueryJoinAndFetchProcessor {
 				getJoinedAssociationTypeOrNull( join )
 		);
 
-		joinFragment.addJoin(
-				joinable.getTableName(),
-				rhsTableAlias,
-				join.resolveAliasedLeftHandSideJoinConditionColumns( lhsTableAlias ),
-				join.resolveNonAliasedRightHandSideJoinConditionColumns(),
-				join.isRightHandSideRequired() ? JoinType.INNER_JOIN : JoinType.LEFT_OUTER_JOIN,
-				additionalJoinConditions
-		);
+		String[] joinColumns = join.resolveAliasedLeftHandSideJoinConditionColumns( lhsTableAlias );
+		QuerySpace lhsQuerySpace = join.getLeftHandSide();
+		if ( joinColumns.length == 0 && lhsQuerySpace instanceof EntityQuerySpace ) {
+			// When no columns are available, this is a special join that involves multiple subtypes
+			EntityQuerySpace entityQuerySpace = (EntityQuerySpace) lhsQuerySpace;
+			AbstractEntityPersister persister = (AbstractEntityPersister) entityQuerySpace.getEntityPersister();
+
+			String[][] polyJoinColumns = persister.getPolymorphicJoinColumns(
+					lhsTableAlias,
+					( (JoinDefinedByMetadata) join ).getJoinedPropertyName()
+			);
+
+			joinFragment.addJoin(
+					joinable.getTableName(),
+					rhsTableAlias,
+					polyJoinColumns,
+					join.resolveNonAliasedRightHandSideJoinConditionColumns(),
+					join.isRightHandSideRequired() ? JoinType.INNER_JOIN : JoinType.LEFT_OUTER_JOIN,
+					additionalJoinConditions
+			);
+		}
+		else {
+			joinFragment.addJoin(
+					joinable.getTableName(),
+					rhsTableAlias,
+					joinColumns,
+					join.resolveNonAliasedRightHandSideJoinConditionColumns(),
+					join.isRightHandSideRequired() ? JoinType.INNER_JOIN : JoinType.LEFT_OUTER_JOIN,
+					additionalJoinConditions
+			);
+		}
 		joinFragment.addJoins(
 				joinable.fromJoinFragment( rhsTableAlias, false, true ),
 				joinable.whereJoinFragment( rhsTableAlias, false, true )
@@ -583,7 +607,7 @@ public class LoadQueryJoinAndFetchProcessor {
 			// 		when processing the Join part of this we are able to look up the "lhs table alias" because we know
 			// 		the 'lhs' QuerySpace.
 			//
-			// Good idea to be able resolve a Join by lookup on the rhs and lhs uid?  If so, Fetch
+			// Good idea to be able to resolve a Join by lookup on the rhs and lhs uid?  If so, Fetch
 
 			// for many-to-many we have 3 table aliases.  By way of example, consider a normal m-n: User<->Role
 			// where User is the FetchOwner and Role (User.roles) is the Fetch.  We'd have:

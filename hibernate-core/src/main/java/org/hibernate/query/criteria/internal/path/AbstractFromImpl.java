@@ -81,7 +81,7 @@ public abstract class AbstractFromImpl<Z, X>
 	@Override
 	public void prepareAlias(RenderingContext renderingContext) {
 		if ( getAlias() == null ) {
-			if ( isCorrelated() ) {
+			if ( canBeReplacedByCorrelatedParentInSubQuery() ) {
 				setAlias( getCorrelationParent().getAlias() );
 			}
 			else {
@@ -91,14 +91,9 @@ public abstract class AbstractFromImpl<Z, X>
 	}
 
 	@Override
-	public String renderProjection(RenderingContext renderingContext) {
+	public String render(RenderingContext renderingContext) {
 		prepareAlias( renderingContext );
 		return getAlias();
-	}
-
-	@Override
-	public String render(RenderingContext renderingContext) {
-		return renderProjection( renderingContext );
 	}
 
 	@Override
@@ -212,7 +207,7 @@ public abstract class AbstractFromImpl<Z, X>
 
 	@Override
 	public String getAlias() {
-		return isCorrelated() ? getCorrelationParent().getAlias() : super.getAlias();
+		return canBeReplacedByCorrelatedParentInSubQuery() ? getCorrelationParent().getAlias() : super.getAlias();
 	}
 
 	// JOINS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -593,5 +588,23 @@ public abstract class AbstractFromImpl<Z, X>
 		else {
 			return (Fetch<X, Y>) fetch( (SingularAttribute) attribute, jt );
 		}
+	}
+
+	@Override
+	public boolean canBeReplacedByCorrelatedParentInSubQuery() {
+		if ( correlationParent == null ) {
+			return false;
+		}
+		if ( joins == null ) {
+			return true;
+		}
+		for ( Join<X, ?> join : joins ) {
+			// HHH-13058: substitution implies INNER JOIN
+			if ( join.getJoinType() == JoinType.LEFT ) {
+				return false;
+			}
+			assert join.getJoinType() == JoinType.INNER;
+		}
+		return true;
 	}
 }

@@ -15,7 +15,12 @@ import javax.persistence.Id;
 
 import org.hibernate.Session;
 import org.hibernate.cfg.AvailableSettings;
+import org.hibernate.dialect.DB2Dialect;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
+import org.hibernate.testing.SkipForDialect;
 import org.hibernate.testing.junit4.BaseNonConfigCoreFunctionalTestCase;
 import org.hibernate.test.util.jdbc.PreparedStatementSpyConnectionProvider;
 import org.junit.Test;
@@ -27,10 +32,11 @@ import static org.mockito.Mockito.verify;
 /**
  * @author Vlad Mihalcea
  */
+@RequiresDialectFeature(DialectChecks.SupportsJdbcDriverProxying.class)
 public class SessionJdbcBatchTest
 		extends BaseNonConfigCoreFunctionalTestCase {
 
-	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider();
+	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider( true, false );
 
 	@Override
 	protected Class<?>[] getAnnotatedClasses() {
@@ -40,6 +46,7 @@ public class SessionJdbcBatchTest
 	@Override
 	protected void addSettings(Map settings) {
 		settings.put( AvailableSettings.STATEMENT_BATCH_SIZE, 2 );
+		connectionProvider.setConnectionProvider( (ConnectionProvider) settings.get( AvailableSettings.CONNECTION_PROVIDER ) );
 		settings.put(
 				AvailableSettings.CONNECTION_PROVIDER,
 				connectionProvider

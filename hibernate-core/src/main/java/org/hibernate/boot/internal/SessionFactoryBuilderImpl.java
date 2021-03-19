@@ -20,12 +20,17 @@ import org.hibernate.SessionFactory;
 import org.hibernate.SessionFactoryObserver;
 import org.hibernate.boot.SessionFactoryBuilder;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
+import org.hibernate.boot.registry.StandardServiceRegistry;
+import org.hibernate.boot.spi.BootstrapContext;
 import org.hibernate.boot.spi.MetadataImplementor;
 import org.hibernate.boot.spi.SessionFactoryBuilderImplementor;
 import org.hibernate.boot.spi.SessionFactoryOptions;
-import org.hibernate.cache.spi.QueryCacheFactory;
+import org.hibernate.bytecode.internal.SessionFactoryObserverForBytecodeEnhancer;
+import org.hibernate.bytecode.spi.BytecodeProvider;
+import org.hibernate.cache.spi.TimestampsCacheFactory;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.hibernate.dialect.function.SQLFunction;
+import org.hibernate.engine.query.spi.HQLQueryPlan;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
 import org.hibernate.internal.SessionFactoryImpl;
 import org.hibernate.loader.BatchFetchStyle;
@@ -35,22 +40,27 @@ import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.hibernate.tuple.entity.EntityTuplizer;
 import org.hibernate.tuple.entity.EntityTuplizerFactory;
 
-import org.jboss.logging.Logger;
-
 /**
  * @author Gail Badner
  * @author Steve Ebersole
  */
 public class SessionFactoryBuilderImpl implements SessionFactoryBuilderImplementor {
-	private static final Logger log = Logger.getLogger( SessionFactoryBuilderImpl.class );
-
 	private final MetadataImplementor metadata;
 	private final SessionFactoryOptionsBuilder optionsBuilder;
 
-	public SessionFactoryBuilderImpl(MetadataImplementor metadata) {
-		this.metadata = metadata;
-		this.optionsBuilder = new SessionFactoryOptionsBuilder( metadata.getMetadataBuildingOptions().getServiceRegistry() );
+	public SessionFactoryBuilderImpl(MetadataImplementor metadata, BootstrapContext bootstrapContext) {
+		this(
+				metadata,
+				new SessionFactoryOptionsBuilder(
+						metadata.getMetadataBuildingOptions().getServiceRegistry(),
+						bootstrapContext
+				)
+		);
+	}
 
+	public SessionFactoryBuilderImpl(MetadataImplementor metadata, SessionFactoryOptionsBuilder optionsBuilder) {
+		this.metadata = metadata;
+		this.optionsBuilder = optionsBuilder;
 		if ( metadata.getSqlFunctionMap() != null ) {
 			for ( Map.Entry<String, SQLFunction> sqlFunctionEntry : metadata.getSqlFunctionMap().entrySet() ) {
 				applySqlFunction( sqlFunctionEntry.getKey(), sqlFunctionEntry.getValue() );
@@ -217,6 +227,12 @@ public class SessionFactoryBuilderImpl implements SessionFactoryBuilderImplement
 	}
 
 	@Override
+	public SessionFactoryBuilder applyDelayedEntityLoaderCreations(boolean delay) {
+		this.optionsBuilder.applyDelayedEntityLoaderCreations( delay );
+		return this;
+	}
+
+	@Override
 	public SessionFactoryBuilder applyDefaultBatchFetchSize(int size) {
 		this.optionsBuilder.applyDefaultBatchFetchSize( size );
 		return this;
@@ -259,7 +275,7 @@ public class SessionFactoryBuilderImpl implements SessionFactoryBuilderImplement
 	}
 
 	@Override
-	public SessionFactoryBuilder applyQuerySubstitutions(Map substitutions) {
+	public SessionFactoryBuilder applyQuerySubstitutions(@SuppressWarnings("rawtypes") Map substitutions) {
 		this.optionsBuilder.applyQuerySubstitutions( substitutions );
 		return this;
 	}
@@ -283,8 +299,8 @@ public class SessionFactoryBuilderImpl implements SessionFactoryBuilderImplement
 	}
 
 	@Override
-	public SessionFactoryBuilder applyQueryCacheFactory(QueryCacheFactory factory) {
-		this.optionsBuilder.applyQueryCacheFactory( factory );
+	public SessionFactoryBuilder applyTimestampsCacheFactory(TimestampsCacheFactory factory) {
+		this.optionsBuilder.applyTimestampsCacheFactory( factory );
 		return this;
 	}
 
@@ -428,11 +444,6 @@ public class SessionFactoryBuilderImpl implements SessionFactoryBuilderImplement
 	}
 
 	@Override
-	public void markAsJpaBootstrap() {
-		this.optionsBuilder.markAsJpaBootstrap();
-	}
-
-	@Override
 	public void disableRefreshDetachedEntity() {
 		this.optionsBuilder.disableRefreshDetachedEntity();
 	}
@@ -454,13 +465,14 @@ public class SessionFactoryBuilderImpl implements SessionFactoryBuilderImplement
 
 	@Override
 	public SessionFactory build() {
-		metadata.validate();
-		return new SessionFactoryImpl( metadata, buildSessionFactoryOptions() );
+		final StandardServiceRegistry serviceRegistry = metadata.getMetadataBuildingOptions().getServiceRegistry();
+		BytecodeProvider bytecodeProvider = serviceRegistry.getService( BytecodeProvider.class );
+		addSessionFactoryObservers( new SessionFactoryObserverForBytecodeEnhancer( bytecodeProvider ) );
+		return new SessionFactoryImpl( metadata, buildSessionFactoryOptions(), HQLQueryPlan::new );
 	}
 
 	@Override
 	public SessionFactoryOptions buildSessionFactoryOptions() {
 		return optionsBuilder.buildOptions();
 	}
-
 }

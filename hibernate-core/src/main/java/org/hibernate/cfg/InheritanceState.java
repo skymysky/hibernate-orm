@@ -279,7 +279,7 @@ public class InheritanceState {
 				superclassState = inheritanceStatePerClass.get( superClass );
 			}
 			while ( superClass != null
-					&& !buildingContext.getBuildingOptions().getReflectionManager().equals( superClass, Object.class )
+					&& !buildingContext.getBootstrapContext().getReflectionManager().equals( superClass, Object.class )
 					&& superclassState == null );
 
 			currentClassInHierarchy = superClass;
@@ -300,9 +300,9 @@ public class InheritanceState {
 		final int lastMappedSuperclass = classesToProcessForMappedSuperclass.size() - 1;
 		for ( int index = 0; index < lastMappedSuperclass; index++ ) {
 			org.hibernate.mapping.MappedSuperclass parentSuperclass = mappedSuperclass;
-			final Class<?> type = buildingContext.getBuildingOptions().getReflectionManager()
+			final Class<?> type = buildingContext.getBootstrapContext().getReflectionManager()
 					.toClass( classesToProcessForMappedSuperclass.get( index ) );
-			//add MAppedSuperclass if not already there
+			//add MappedSuperclass if not already there
 			mappedSuperclass = buildingContext.getMetadataCollector().getMappedSuperclass( type );
 			if ( mappedSuperclass == null ) {
 				mappedSuperclass = new org.hibernate.mapping.MappedSuperclass( parentSuperclass, superEntity );

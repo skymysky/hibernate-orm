@@ -8,6 +8,7 @@ package org.hibernate.envers.configuration.internal.metadata;
 
 import java.util.Properties;
 
+import org.hibernate.boot.Metadata;
 import org.hibernate.envers.configuration.internal.metadata.reader.PropertyAuditingData;
 import org.hibernate.envers.internal.entities.PropertyData;
 import org.hibernate.envers.internal.entities.mapper.SimpleMapperBuilder;
@@ -27,6 +28,12 @@ import org.dom4j.Element;
  * @author Chris Cranford
  */
 public final class BasicMetadataGenerator {
+
+	private final Metadata metadata;
+
+	public BasicMetadataGenerator(AuditMetadataGenerator mainGenerator) {
+		this.metadata = mainGenerator.getMetadata();
+	}
 
 	boolean addBasic(
 			Element parent,
@@ -86,37 +93,6 @@ public final class BasicMetadataGenerator {
 		}
 	}
 
-	@SuppressWarnings({"unchecked"})
-	boolean addManyToOne(
-			Element parent,
-			PropertyAuditingData propertyAuditingData,
-			Value value,
-			SimpleMapperBuilder mapper) {
-		final Type type = value.getType();
-
-		// A null mapper occurs when adding to composite-id element
-		final Element manyToOneElement = parent.addElement( mapper != null ? "many-to-one" : "key-many-to-one" );
-		manyToOneElement.addAttribute( "name", propertyAuditingData.getName() );
-		manyToOneElement.addAttribute( "class", type.getName() );
-
-		// HHH-11107
-		// Use FK hbm magic value 'none' to skip making foreign key constraints between the Envers
-		// schema and the base table schema when a @ManyToOne is present in an identifier.
-		if ( mapper == null ) {
-			manyToOneElement.addAttribute( "foreign-key", "none" );
-		}
-
-		MetadataTools.addColumns( manyToOneElement, value.getColumnIterator() );
-
-		// A null mapper means that we only want to add xml mappings
-		if ( mapper != null ) {
-			final PropertyData propertyData = propertyAuditingData.resolvePropertyData( value.getType() );
-			mapper.add( propertyData );
-		}
-
-		return true;
-	}
-
 	private boolean isAddNestedType(Value value) {
 		if ( value instanceof SimpleValue ) {
 			if ( ( (SimpleValue) value ).getTypeParameters() != null ) {
@@ -152,7 +128,7 @@ public final class BasicMetadataGenerator {
 
 		typeMapping.addAttribute( "name", typeName );
 
-		if ( EnumType.class.getName().equals( typeName ) ) {
+		if ( isEnumType( value.getType(), typeName ) ) {
 			// Proper handling of enumeration type
 			mapEnumerationType( typeMapping, value.getType(), typeParameters );
 		}
@@ -174,5 +150,22 @@ public final class BasicMetadataGenerator {
 			typeName = type.getClass().getName();
 		}
 		return typeName;
+	}
+
+	private boolean isEnumType(Type type, String typeName) {
+		// Check if a custom type implementation is used and it extends the EnumType directly.
+		if ( CustomType.class.isInstance( type ) ) {
+			final CustomType customType = (CustomType) type;
+			if ( EnumType.class.isInstance( customType.getUserType() ) ) {
+				return true;
+			}
+		}
+
+		// Check if its an EnumType without a custom type
+		if ( EnumType.class.getName().equals( typeName ) ) {
+			return true;
+		}
+
+		return false;
 	}
 }

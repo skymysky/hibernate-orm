@@ -12,7 +12,7 @@ import javax.persistence.Convert;
 import javax.persistence.Converts;
 import javax.persistence.JoinTable;
 
-import org.hibernate.annotations.common.AssertionFailure;
+import org.hibernate.AssertionFailure;
 import org.hibernate.annotations.common.reflection.XClass;
 import org.hibernate.annotations.common.reflection.XProperty;
 import org.hibernate.boot.spi.MetadataBuildingContext;
@@ -231,7 +231,7 @@ public class ClassPropertyHolder extends AbstractPropertyHolder {
 	}
 
 	private void addPropertyToMappedSuperclass(Property prop, XClass declaringClass) {
-		final Class type = getContext().getBuildingOptions().getReflectionManager().toClass( declaringClass );
+		final Class type = getContext().getBootstrapContext().getReflectionManager().toClass( declaringClass );
 		MappedSuperclass superclass = getContext().getMetadataCollector().getMappedSuperclass( type );
 		superclass.addDeclaredProperty( prop );
 	}
@@ -259,7 +259,7 @@ public class ClassPropertyHolder extends AbstractPropertyHolder {
 
 	/**
 	 * Needed for proper compliance with naming strategy, the property table
-	 * can be overriden if the properties are part of secondary tables
+	 * can be overridden if the properties are part of secondary tables
 	 */
 	private Map<String, Join> getJoinsPerRealTableName() {
 		if ( joinsPerRealTableName == null ) {

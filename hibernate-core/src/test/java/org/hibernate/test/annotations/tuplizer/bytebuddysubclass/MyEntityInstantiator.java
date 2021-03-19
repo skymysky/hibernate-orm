@@ -12,9 +12,10 @@ import org.hibernate.mapping.PersistentClass;
 import org.hibernate.tuple.Instantiator;
 
 import net.bytebuddy.ByteBuddy;
-import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.FixedValue;
 import net.bytebuddy.matcher.ElementMatchers;
+
+import static org.hibernate.bytecode.spi.ClassLoadingStrategyHelper.resolveClassLoadingStrategy;
 
 /**
  * @author Florian Bien
@@ -42,7 +43,8 @@ public class MyEntityInstantiator implements Instantiator {
 				.method( ElementMatchers.named( "toString" ) )
 				.intercept( FixedValue.value( "transformed" ) )
 				.make()
-				.load( entityClass.getClassLoader(), ClassLoadingStrategy.Default.INJECTION )
+				// we use our internal helper to get a class loading strategy suitable for the JDK used
+				.load( entityClass.getClassLoader(), resolveClassLoadingStrategy( entityClass ) )
 				.getLoaded();
 
 		try {

@@ -8,11 +8,16 @@ package org.hibernate.internal.util.collections;
 
 import java.io.Serializable;
 import java.lang.reflect.Array;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
 
 import org.hibernate.HibernateException;
 import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
+import org.hibernate.internal.build.AllowSysOut;
 import org.hibernate.type.Type;
 
 public final class ArrayHelper {
@@ -28,6 +33,12 @@ public final class ArrayHelper {
 			}
 		}
 		return -1;
+	}
+
+	public static <T> T[] filledArray(T value, Class<T> valueJavaType, int size) {
+		final T[] array = (T[]) Array.newInstance( valueJavaType, size );
+		Arrays.fill( array, value );
+		return array;
 	}
 
 	public static String[] toStringArray(Object[] objects) {
@@ -226,6 +237,15 @@ public final class ArrayHelper {
 		return true;
 	}
 
+	public static boolean[] negate(boolean[] valueNullness) {
+		boolean[] result = new boolean[valueNullness.length];
+		for (int i = 0; i < valueNullness.length; i++) {
+			result[i] = !valueNullness[i];
+		}
+		return result;
+	}
+
+
 	public static <T> void addAll(Collection<T> collection, T[] array) {
 		collection.addAll( Arrays.asList( array ) );
 	}
@@ -416,6 +436,25 @@ public final class ArrayHelper {
 		return destination;
 	}
 
+	public static int[] trim(int[] from, int length) {
+		int[] trimmed = new int[length];
+		System.arraycopy( from, 0, trimmed, 0, length );
+		return trimmed;
+	}
+
+	public static Object[] toObjectArray(Object array) {
+		if ( array instanceof Object[] ) {
+			return ( Object[] ) array;
+		}
+		final int arrayLength = Array.getLength( array );
+		final Object[] outputArray = new Object[ arrayLength ];
+		for ( int i = 0; i < arrayLength; ++i ) {
+			outputArray[ i ] = Array.get( array, i );
+		}
+		return outputArray;
+	}
+
+	@AllowSysOut
 	public static void main(String... args) {
 		int[] batchSizes = ArrayHelper.getBatchSizes( 32 );
 

@@ -9,9 +9,8 @@ package org.hibernate.spatial.integration;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-
-import org.jboss.logging.Logger;
 
 import org.hibernate.Criteria;
 import org.hibernate.Session;
@@ -20,21 +19,25 @@ import org.hibernate.criterion.Criterion;
 import org.hibernate.spatial.HSMessageLogger;
 import org.hibernate.spatial.SpatialFunction;
 import org.hibernate.spatial.criterion.SpatialRestrictions;
-import org.hibernate.spatial.integration.jts.GeomEntity;
+import org.hibernate.spatial.dialect.hana.HANASpatialDialect;
+import org.hibernate.spatial.integration.jts.JtsGeomEntity;
 import org.hibernate.spatial.testing.SpatialDialectMatcher;
 import org.hibernate.spatial.testing.SpatialFunctionalTestCase;
 
+import org.hibernate.testing.Skip;
+import org.hibernate.testing.SkipForDialect;
 import org.junit.Test;
 
-import org.hibernate.testing.Skip;
+import org.jboss.logging.Logger;
 
 import static junit.framework.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 @Skip(condition = SpatialDialectMatcher.class, message = "No Spatial Dialect")
+@SkipForDialect(value = HANASpatialDialect.class, comment = "The HANA dialect is tested via org.hibernate.spatial.dialect.hana.TestHANASpatialFunctions", jiraKey = "HHH-12426")
 public class TestSpatialRestrictions extends SpatialFunctionalTestCase {
 
-	private static HSMessageLogger LOG = Logger.getMessageLogger(
+	private static final HSMessageLogger LOG = Logger.getMessageLogger(
 			HSMessageLogger.class,
 			TestSpatialRestrictions.class.getName()
 	);
@@ -186,7 +189,7 @@ public class TestSpatialRestrictions extends SpatialFunctionalTestCase {
 		try {
 			session = openSession();
 			tx = session.beginTransaction();
-			Criteria criteria = session.createCriteria( GeomEntity.class );
+			Criteria criteria = session.createCriteria( JtsGeomEntity.class );
 			criteria.add( spatialCriterion );
 			compare( dbexpected, criteria.list() );
 		}
@@ -205,8 +208,12 @@ public class TestSpatialRestrictions extends SpatialFunctionalTestCase {
 		for ( Map.Entry<Integer, Boolean> entry : dbexpected.entrySet() ) {
 			if ( entry.getValue() ) {
 				cnt++;
-				if ( !findInList( entry.getKey(), (List<GeomEntity>) list ) ) {
-					fail( String.format( "Expected object with id= %d, but not found in result", entry.getKey() ) );
+				if ( !findInList( entry.getKey(), (List<JtsGeomEntity>) list ) ) {
+					fail( String.format(
+							Locale.ENGLISH,
+							"Expected object with id= %d, but not found in result",
+							entry.getKey()
+					) );
 				}
 			}
 		}
@@ -214,8 +221,8 @@ public class TestSpatialRestrictions extends SpatialFunctionalTestCase {
 		LOG.info( String.format( "Found %d objects within testsuite-suite polygon.", cnt ) );
 	}
 
-	private boolean findInList(Integer id, List<GeomEntity> list) {
-		for ( GeomEntity entity : list ) {
+	private boolean findInList(Integer id, List<JtsGeomEntity> list) {
+		for ( JtsGeomEntity entity : list ) {
 			if ( entity.getId().equals( id ) ) {
 				return true;
 			}

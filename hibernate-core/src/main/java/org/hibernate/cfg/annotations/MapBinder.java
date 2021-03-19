@@ -23,9 +23,9 @@ import org.hibernate.AnnotationException;
 import org.hibernate.AssertionFailure;
 import org.hibernate.FetchMode;
 import org.hibernate.MappingException;
-import org.hibernate.annotations.common.reflection.ClassLoadingException;
 import org.hibernate.annotations.common.reflection.XClass;
 import org.hibernate.annotations.common.reflection.XProperty;
+import org.hibernate.boot.spi.BootstrapContext;
 import org.hibernate.boot.spi.MetadataBuildingContext;
 import org.hibernate.cfg.AccessType;
 import org.hibernate.cfg.AnnotatedClassType;
@@ -73,7 +73,7 @@ public class MapBinder extends CollectionBinder {
 	}
 
 	protected Collection createCollection(PersistentClass persistentClass) {
-		return new org.hibernate.mapping.Map( getBuildingContext().getMetadataCollector(), persistentClass );
+		return new org.hibernate.mapping.Map( getBuildingContext(), persistentClass );
 	}
 
 	@Override
@@ -185,7 +185,7 @@ public class MapBinder extends CollectionBinder {
 		}
 		else {
 			//this is a true Map mapping
-			//TODO ugly copy/pastle from CollectionBinder.bindManyToManySecondPass
+			//TODO ugly copy/paste from CollectionBinder.bindManyToManySecondPass
 			String mapKeyType;
 			Class target = void.class;
 			/*
@@ -206,7 +206,7 @@ public class MapBinder extends CollectionBinder {
 			ManyToOne element = null;
 			org.hibernate.mapping.Map mapValue = (org.hibernate.mapping.Map) this.collection;
 			if ( isIndexOfEntities ) {
-				element = new ManyToOne( buildingContext.getMetadataCollector(), mapValue.getCollectionTable() );
+				element = new ManyToOne( buildingContext, mapValue.getCollectionTable() );
 				mapValue.setIndex( element );
 				element.setReferencedEntityName( mapKeyType );
 				//element.setFetchMode( fetchMode );
@@ -217,19 +217,17 @@ public class MapBinder extends CollectionBinder {
 				//does not make sense for a map key element.setIgnoreNotFound( ignoreNotFound );
 			}
 			else {
-				XClass keyXClass;
+				final XClass keyXClass;
 				AnnotatedClassType classType;
 				if ( BinderHelper.PRIMITIVE_NAMES.contains( mapKeyType ) ) {
 					classType = AnnotatedClassType.NONE;
 					keyXClass = null;
 				}
 				else {
-					try {
-						keyXClass = buildingContext.getBuildingOptions().getReflectionManager().classForName( mapKeyType );
-					}
-					catch (ClassLoadingException e) {
-						throw new AnnotationException( "Unable to find class: " + mapKeyType, e );
-					}
+					final BootstrapContext bootstrapContext = buildingContext.getBootstrapContext();
+					final Class<Object> mapKeyClass = bootstrapContext.getClassLoaderAccess().classForName( mapKeyType );
+					keyXClass = bootstrapContext.getReflectionManager().toXClass( mapKeyClass );
+
 					classType = buildingContext.getMetadataCollector().getClassType( keyXClass );
 					// force in case of attribute override naming the key
 					if ( isEmbedded || mappingDefinedAttributeOverrideOnMapKey( property ) ) {
@@ -322,7 +320,7 @@ public class MapBinder extends CollectionBinder {
 						column.setTable( mapValue.getCollectionTable() );
 					}
 					elementBinder.setColumns( elementColumns );
-					//do not call setType as it extract the type from @Type
+					//do not call setType as it extracts the type from @Type
 					//the algorithm generally does not apply for map key anyway
 					elementBinder.setKey(true);
 					elementBinder.setType(
@@ -338,7 +336,7 @@ public class MapBinder extends CollectionBinder {
 			}
 			//FIXME pass the Index Entity JoinColumns
 			if ( !collection.isOneToMany() ) {
-				//index column shoud not be null
+				//index column should not be null
 				for (Ejb3JoinColumn col : mapKeyManyToManyColumns) {
 					col.forceNotNull();
 				}
@@ -347,7 +345,8 @@ public class MapBinder extends CollectionBinder {
 			if ( element != null ) {
 				final javax.persistence.ForeignKey foreignKey = getMapKeyForeignKey( property );
 				if ( foreignKey != null ) {
-					if ( foreignKey.value() == ConstraintMode.NO_CONSTRAINT ) {
+					if ( foreignKey.value() == ConstraintMode.NO_CONSTRAINT
+							|| foreignKey.value() == ConstraintMode.PROVIDER_DEFAULT && getBuildingContext().getBuildingOptions().isNoConstraintByDefault() ) {
 						element.setForeignKeyName( "none" );
 					}
 					else {
@@ -436,7 +435,7 @@ public class MapBinder extends CollectionBinder {
 				referencedEntityColumns = referencedProperty.getColumnIterator();
 			}
 			fromAndWhere = getFromAndWhereFormula(
-					associatedClass.getTable().getName(),
+					associatedClass.getTable().getQualifiedTableName().toString(),
 					element.getColumnIterator(),
 					referencedEntityColumns
 			);
@@ -457,7 +456,7 @@ public class MapBinder extends CollectionBinder {
 		if ( value instanceof Component ) {
 			Component component = (Component) value;
 			Iterator properties = component.getPropertyIterator();
-			Component indexComponent = new Component( getBuildingContext().getMetadataCollector(), collection );
+			Component indexComponent = new Component( getBuildingContext(), collection );
 			indexComponent.setComponentClassName( component.getComponentClassName() );
 			while ( properties.hasNext() ) {
 				Property current = (Property) properties.next();
@@ -488,7 +487,7 @@ public class MapBinder extends CollectionBinder {
 			SimpleValue targetValue;
 			if ( value instanceof ManyToOne ) {
 				ManyToOne sourceManyToOne = (ManyToOne) sourceValue;
-				ManyToOne targetManyToOne = new ManyToOne( getBuildingContext().getMetadataCollector(), collection.getCollectionTable() );
+				ManyToOne targetManyToOne = new ManyToOne( getBuildingContext(), collection.getCollectionTable() );
 				targetManyToOne.setFetchMode( FetchMode.DEFAULT );
 				targetManyToOne.setLazy( true );
 				//targetValue.setIgnoreNotFound( ); does not make sense for a map key
@@ -496,7 +495,7 @@ public class MapBinder extends CollectionBinder {
 				targetValue = targetManyToOne;
 			}
 			else {
-				targetValue = new SimpleValue( getBuildingContext().getMetadataCollector(), collection.getCollectionTable() );
+				targetValue = new SimpleValue( getBuildingContext(), collection.getCollectionTable() );
 				targetValue.copyTypeFrom( sourceValue );
 			}
 			Iterator columns = sourceValue.getColumnIterator();

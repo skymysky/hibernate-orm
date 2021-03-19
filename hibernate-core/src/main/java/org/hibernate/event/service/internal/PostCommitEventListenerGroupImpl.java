@@ -12,6 +12,7 @@ import org.hibernate.event.spi.PostCommitInsertEventListener;
 import org.hibernate.event.spi.PostCommitUpdateEventListener;
 import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.jpa.event.spi.CallbackRegistry;
 
 /**
  * Historically, the listeners for the post-commit events simply reused the
@@ -22,13 +23,16 @@ import org.hibernate.internal.CoreMessageLogger;
  *
  * @author Steve Ebersole
  */
-public class PostCommitEventListenerGroupImpl<T> extends EventListenerGroupImpl<T> {
+class PostCommitEventListenerGroupImpl<T> extends EventListenerGroupImpl<T> {
 	private static final CoreMessageLogger log = CoreLogging.messageLogger( PostCommitEventListenerGroupImpl.class );
 
 	private final Class extendedListenerContract;
 
-	public PostCommitEventListenerGroupImpl(EventType<T> eventType) {
-		super( eventType );
+	public PostCommitEventListenerGroupImpl(
+			EventType<T> eventType,
+			CallbackRegistry callbackRegistry,
+			boolean isJpaBootstrap) {
+		super( eventType, callbackRegistry, isJpaBootstrap );
 
 		if ( eventType == EventType.POST_COMMIT_DELETE ) {
 			this.extendedListenerContract = PostCommitDeleteEventListener.class;

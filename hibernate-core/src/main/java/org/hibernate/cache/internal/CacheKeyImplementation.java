@@ -7,9 +7,9 @@
 package org.hibernate.cache.internal;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.internal.util.compare.EqualsHelper;
 import org.hibernate.type.Type;
 
 /**
@@ -37,7 +37,7 @@ final class CacheKeyImplementation implements Serializable {
 	 * @param id The identifier associated with the cached data
 	 * @param type The Hibernate type mapping
 	 * @param entityOrRoleName The entity or collection-role name.
-	 * @param tenantId The tenant identifier associated this data.
+	 * @param tenantId The tenant identifier associated with this data.
 	 * @param factory The session factory for which we are caching
 	 */
 	CacheKeyImplementation(
@@ -76,9 +76,9 @@ final class CacheKeyImplementation implements Serializable {
 			return false;
 		}
 		final CacheKeyImplementation that = (CacheKeyImplementation) other;
-		return EqualsHelper.equals( entityOrRoleName, that.entityOrRoleName )
-				&& type.isEqual( id, that.id)
-				&& EqualsHelper.equals( tenantId, that.tenantId );
+		return Objects.equals( entityOrRoleName, that.entityOrRoleName )
+				&& type.isEqual( id, that.id )
+				&& Objects.equals( tenantId, that.tenantId );
 	}
 
 	@Override

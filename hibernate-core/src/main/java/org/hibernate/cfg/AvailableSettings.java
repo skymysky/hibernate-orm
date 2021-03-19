@@ -7,14 +7,16 @@
 package org.hibernate.cfg;
 
 import java.util.function.Supplier;
-
 import javax.persistence.GeneratedValue;
 
+import org.hibernate.HibernateException;
 import org.hibernate.Transaction;
 import org.hibernate.boot.MetadataBuilder;
 import org.hibernate.boot.registry.classloading.internal.TcclLookupPrecedence;
+import org.hibernate.cache.spi.TimestampsCacheFactory;
 import org.hibernate.internal.log.DeprecationLogger;
-import org.hibernate.jpa.JpaCompliance;
+import org.hibernate.jpa.spi.JpaCompliance;
+import org.hibernate.query.ImmutableEntityUpdateQueryHandlingMode;
 import org.hibernate.query.internal.ParameterMetadataImpl;
 import org.hibernate.resource.beans.container.spi.ExtendedBeanManager;
 import org.hibernate.resource.transaction.spi.TransactionCoordinator;
@@ -197,7 +199,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 *     * delayed access to the BeanManager reference.  Here, Hibernate
 	 *      will not access the reference passed as the BeanManager during
 	 *      bootstrap until it is first needed.  Note however that this has
-	 *      the effect of delaying any deployement problems until after
+	 *      the effect of delaying any deployment problems until after
 	 *      bootstrapping.
 	 *
 	 * This setting is used to configure Hibernate ORM's access to
@@ -253,7 +255,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String HIBERNATE_CLASSLOADER = "hibernate.classLoader.hibernate";
 
 	/**
-	 * Names the {@link ClassLoader} used when Hibernate is unable to locates classes on the
+	 * Names the {@link ClassLoader} used when Hibernate is unable to locate classes on the
 	 * {@link #APP_CLASSLOADER} or {@link #HIBERNATE_CLASSLOADER}.
 	 * @since 4.0
 	 * @deprecated Use {@link #CLASSLOADERS} instead
@@ -274,7 +276,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 *         <b>enabled</b> - Do the build
 	 *     </li>
 	 *     <li>
-	 *         <b>disabled</b> - Do not so the build
+	 *         <b>disabled</b> - Do not do the build
 	 *     </li>
 	 *     <li>
 	 *         <b>ignoreUnsupported</b> - Do the build, but ignore any non-JPA features that would otherwise
@@ -334,7 +336,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	/**
 	 * Names the connection user.  This might mean one of 2 things in out-of-the-box Hibernate
 	 * {@link org.hibernate.engine.jdbc.connections.spi.ConnectionProvider}: <ul>
-	 *     <li>The username used to pass along to creating the JDBC connection</li>
+	 *     <li>The username used to pass along to create the JDBC connection</li>
 	 *     <li>The username used to obtain a JDBC connection from a data source</li>
 	 * </ul>
 	 */
@@ -687,6 +689,14 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 */
 	String KEYWORD_AUTO_QUOTING_ENABLED = "hibernate.auto_quote_keyword";
 
+	/**
+	 * Allows to skip processing of XML Mapping.
+	 * This is for people using exclusively annotations to define their model, and might
+	 * be able to improve efficiency of booting Hibernate ORM.
+	 * By default, the XML mapping is taken into account.
+	 * @since 5.4.1
+	 */
+	String XML_MAPPING_ENABLED = "hibernate.xml_mapping_enabled";
 
 
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -731,6 +741,11 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * Enable formatting of SQL logged to the console
 	 */
 	String FORMAT_SQL ="hibernate.format_sql";
+
+	/**
+	 * Enable highlighting of SQL logged to the console using ANSI escape codes
+	 */
+	String HIGHLIGHT_SQL ="hibernate.highlight_sql";
 
 	/**
 	 * Add comments to the generated SQL
@@ -849,6 +864,40 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String USE_REFLECTION_OPTIMIZER = "hibernate.bytecode.use_reflection_optimizer";
 
 	/**
+	 * Configure the global BytecodeProvider implementation to generate class names matching the
+	 * existing naming patterns.
+	 * It is not a good idea to rely on a classname to check if a class is an Hibernate proxy,
+	 * yet some frameworks are currently relying on this.
+	 * This option is disabled by default and will log a deprecation warning when enabled.
+	 */
+	String ENFORCE_LEGACY_PROXY_CLASSNAMES = "hibernate.bytecode.enforce_legacy_proxy_classnames";
+
+	/**
+	 * Should Hibernate use enhanced entities "as a proxy"?
+	 *
+	 * E.g., when an application uses {@link org.hibernate.Session#load} against an enhanced
+	 * class, enabling this will allow Hibernate to create an "empty" instance of the enhanced
+	 * class to act as the proxy - it contains just the identifier which is later used to
+	 * trigger the base initialization but no other data is loaded
+	 *
+	 * Not enabling this (the legacy default behavior) would cause the "base" attributes to
+	 * be loaded.  Any lazy-group attributes would not be initialized.
+	 *
+	 * Applications using bytecode enhancement and switching to allowing this should be careful
+	 * in use of the various {@link org.hibernate.Hibernate} methods such as
+	 * {@link org.hibernate.Hibernate#isInitialized},
+	 * {@link org.hibernate.Hibernate#isPropertyInitialized}, etc - enabling this setting changes
+	 * the results of those methods
+	 *
+	 * @implSpec See {@link org.hibernate.bytecode.enhance.spi.interceptor.EnhancementAsProxyLazinessInterceptor}
+	 *
+	 * @deprecated (as of 5.5) with no replacement.  When using enhancement based lazy loading
+	 * using the enhanced class as proxy is always used when appropriate.
+	 */
+	@Deprecated
+	String ALLOW_ENHANCEMENT_AS_PROXY = "hibernate.bytecode.allow_enhancement_as_proxy";
+
+	/**
 	 * The classname of the HQL query parser factory
 	 */
 	String QUERY_TRANSLATOR = "hibernate.query.factory_class";
@@ -891,6 +940,18 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String WRAP_RESULT_SETS = "hibernate.jdbc.wrap_result_sets";
 
 	/**
+	 * Indicates if exception handling for a SessionFactory built via Hibernate's native bootstrapping
+	 * should behave the same as native exception handling in Hibernate ORM 5.1, When set to {@code true},
+	 * {@link HibernateException} will not be wrapped or converted according to the JPA specification.
+	 * <p/>
+	 * This setting will be ignored for a SessionFactory built via JPA bootstrapping.
+	 * <p/>
+	 * Values are {@code true}  or {@code false}.
+	 * Default value is {@code false}
+	 */
+	String NATIVE_EXCEPTION_HANDLING_51_COMPLIANCE = "hibernate.native_exception_handling_51_compliance";
+
+	/**
 	 * Enable ordering of update statements by primary key value
 	 */
 	String ORDER_UPDATES = "hibernate.order_updates";
@@ -899,6 +960,14 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * Enable ordering of insert statements for the purpose of more efficient JDBC batching.
 	 */
 	String ORDER_INSERTS = "hibernate.order_inserts";
+
+	/**
+	 * JPA Callbacks are enabled by default. Set this to {@code false} to disable them.
+	 * Mostly useful to save a bit of memory when they are not used.
+	 * Experimental and will likely be removed as soon as the memory overhead is resolved.
+	 * @since 5.4
+	 */
+	String JPA_CALLBACKS_ENABLED = "hibernate.jpa_callbacks.enabled";
 
 	/**
 	 * Default precedence of null values in {@code ORDER BY} clause.  Supported options: {@code none} (default),
@@ -1044,7 +1113,10 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String CACHE_PROVIDER_CONFIG = "hibernate.cache.provider_configuration_file_resource_path";
 
 	/**
-	 * Enable the second-level cache (enabled by default)
+	 * Enable the second-level cache.
+	 * <p>
+	 * By default, if the currently configured {@link org.hibernate.cache.spi.RegionFactory} is not the {@link org.hibernate.cache.internal.NoCachingRegionFactory},
+	 * then the second-level cache is going to be enabled. Otherwise, the second-level cache is disabled.
 	 */
 	String USE_SECOND_LEVEL_CACHE = "hibernate.cache.use_second_level_cache";
 
@@ -1054,7 +1126,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String USE_QUERY_CACHE = "hibernate.cache.use_query_cache";
 
 	/**
-	 * The {@link org.hibernate.cache.spi.QueryCacheFactory} implementation class.
+	 * The {@link TimestampsCacheFactory} implementation class.
 	 */
 	String QUERY_CACHE_FACTORY = "hibernate.cache.query_cache_factory";
 
@@ -1123,6 +1195,9 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String CHECK_NULLABILITY = "hibernate.check_nullability";
 
 
+	/**
+	 * Pick which bytecode enhancing library to use. Currently supports javassist and bytebuddy, bytebuddy being the default since version 5.3.
+	 */
 	String BYTECODE_PROVIDER = "hibernate.bytecode.provider";
 
 	String JPAQL_STRICT_COMPLIANCE= "hibernate.query.jpaql_strict_compliance";
@@ -1270,7 +1345,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String HBM2DDL_DB_MINOR_VERSION = "javax.persistence.database-minor-version";
 
 	/**
-	 * Specifies whether schema generation commands for schema creation are to be determine based on object/relational
+	 * Specifies whether schema generation commands for schema creation are to be determined based on object/relational
 	 * mapping metadata, DDL scripts, or a combination of the two.  See {@link SourceType} for valid set of values.
 	 * If no value is specified, a default is assumed as follows:<ul>
 	 *     <li>
@@ -1286,7 +1361,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String HBM2DDL_CREATE_SOURCE = "javax.persistence.schema-generation.create-source";
 
 	/**
-	 * Specifies whether schema generation commands for schema dropping are to be determine based on object/relational
+	 * Specifies whether schema generation commands for schema dropping are to be determined based on object/relational
 	 * mapping metadata, DDL scripts, or a combination of the two.  See {@link SourceType} for valid set of values.
 	 * If no value is specified, a default is assumed as follows:<ul>
 	 *     <li>
@@ -1388,10 +1463,21 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 *
 	 * @since 5.0
 	 */
+	String HBM2DDL_CREATE_NAMESPACES = "hibernate.hbm2ddl.create_namespaces";
+
+
+	/**
+	 * Specifies whether to automatically create also the database schema/catalog.
+	 * The default is false.
+	 *
+	 * @since 5.0
+	 * @deprecated
+	 */
+	@Deprecated
 	String HBM2DLL_CREATE_NAMESPACES = "hibernate.hbm2dll.create_namespaces";
 
 	/**
-	 * The JPA variant of {@link #HBM2DLL_CREATE_NAMESPACES}
+	 * The JPA variant of {@link #HBM2DDL_CREATE_NAMESPACES}
 	 * <p/>
 	 * Specifies whether the persistence provider is to create the database schema(s) in addition to creating
 	 * database objects (tables, sequences, constraints, etc).  The value of this boolean property should be set
@@ -1399,7 +1485,13 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * contains "CREATE SCHEMA" commands.  If this property is not supplied (or is explicitly {@code false}), the
 	 * provider should not attempt to create database schemas.
 	 */
-	String HBM2DLL_CREATE_SCHEMAS = "javax.persistence.create-database-schemas";
+	String HBM2DDL_CREATE_SCHEMAS = "javax.persistence.create-database-schemas";
+
+	/**
+	 * @deprecated Use {@link #HBM2DDL_CREATE_SCHEMAS} instead: this variable name had a typo.
+	 */
+	@Deprecated
+	String HBM2DLL_CREATE_SCHEMAS = HBM2DDL_CREATE_SCHEMAS;
 
 	/**
 	 * Used to specify the {@link org.hibernate.tool.schema.spi.SchemaFilterProvider} to be used by
@@ -1441,6 +1533,19 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 */
 	String HBM2DDL_HALT_ON_ERROR = "hibernate.hbm2ddl.halt_on_error";
 
+	/**
+	 * <p>
+	 * This setting is used when you use {@link javax.persistence.ConstraintMode#PROVIDER_DEFAULT} strategy for foreign key mapping.
+	 * valid value is {@code CONSTRAINT} and {@code NO_CONSTRAINT}.
+	 * </p>
+	 * <p>
+	 * The default value is CONSTRAINT.
+	 * </p>
+	 *
+	 * @since 5.4
+	 */
+	String HBM2DDL_DEFAULT_CONSTRAINT_MODE = "hibernate.hbm2ddl.default_constraint_mode";
+
 	String JMX_ENABLED = "hibernate.jmx.enabled";
 	String JMX_PLATFORM_SERVER = "hibernate.jmx.usePlatformServer";
 	String JMX_AGENT_ID = "hibernate.jmx.agentId";
@@ -1453,6 +1558,22 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * either a class name or instance.
 	 */
 	String CUSTOM_ENTITY_DIRTINESS_STRATEGY = "hibernate.entity_dirtiness_strategy";
+
+	/**
+	 * Controls whether an entity's "where" clause, mapped using <code>@Where(clause="....")</code>
+	 * or <code>&lt;entity ... where="..."&gt;</code>, is taken into account when loading one-to-many
+	 * or many-to-many collections of that type of entity.
+	 * <p/>
+	 * This setting has no affect on collections of embeddable values containing an association to
+	 * that type of entity.
+	 * <p/>
+	 * When `true` (the default), the entity's "where" clause will be taken into account when loading
+	 * one-to-many or many-to-many collections of that type of entity.
+	 * <p/>
+	 * `false` indicates that the entity's "where" clause will be ignored when loading one-to-many or
+	 * many-to-many collections of that type of entity.
+	 */
+	String USE_ENTITY_WHERE_CLAUSE_FOR_COLLECTIONS = "hibernate.use_entity_where_clause_for_collections";
 
 	/**
 	 * Strategy for multi-tenancy.
@@ -1546,6 +1667,25 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String BATCH_FETCH_STYLE = "hibernate.batch_fetch_style";
 
 	/**
+	 * Controls how the individual Loaders for an entity are created.
+	 *
+	 * When `true` (the default), the loaders are only created on first
+	 * access; this ensures that all access patterns which are not useful
+	 * to the application are never instantiated, possibly saving a
+	 * substantial amount of memory for applications having many entities.
+	 * The only exception is the loader for <code>LockMode.NONE</code>,
+	 * which will always be eagerly initialized; this is necessary to
+	 * detect mapping errors.
+	 *
+	 * `false` indicates that all loaders should be created up front; this
+	 * will consume more memory but ensures all necessary memory is
+	 * allocated right away.
+	 *
+	 * @since 5.3
+	 */
+	String DELAY_ENTITY_LOADER_CREATIONS = "hibernate.loader.delay_entity_loader_creations";
+
+	/**
 	 * A transaction can be rolled back by another thread ("tracking by thread")
 	 * -- not the original application. Examples of this include a JTA
 	 * transaction timeout handled by a background reaper thread.  The ability
@@ -1574,7 +1714,13 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 *
 	 * @since 5.0
 	 */
-	String EXTRA_PHYSICAL_TABLE_TYPES = "hibernate.hbm2dll.extra_physical_table_types";
+	String EXTRA_PHYSICAL_TABLE_TYPES = "hibernate.hbm2ddl.extra_physical_table_types";
+
+	/**
+	 * @deprecated use {@link #EXTRA_PHYSICAL_TABLE_TYPES} instead.
+	 */
+	@Deprecated
+	String DEPRECATED_EXTRA_PHYSICAL_TABLE_TYPES = "hibernate.hbm2dll.extra_physical_table_types";
 
 	/**
 	 * Unique columns and unique keys both use unique constraints in most dialects.
@@ -1608,6 +1754,11 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String LOG_SESSION_METRICS = "hibernate.session.events.log";
 
 	/**
+	 * Setting that logs query which executed slower than specified milliseconds. Default is 0 (disabled).
+	 */
+	String LOG_SLOW_QUERY = "hibernate.session.events.log.LOG_QUERIES_SLOWER_THAN_MS";
+
+	/**
 	 * Defines a default {@link org.hibernate.SessionEventListener} to be applied to opened Sessions.
 	 */
 	String AUTO_SESSION_EVENTS_LISTENER = "hibernate.session.events.auto";
@@ -1618,11 +1769,14 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * handling.  Implicitly Hibernate will not pass the NULL, the intention being to allow
 	 * any default argument values to be applied.
 	 * <p/>
-	 * This defines a global setting, which can them be controlled per parameter via
+	 * This defines a global setting, which can then be controlled per parameter via
 	 * {@link org.hibernate.procedure.ParameterRegistration#enablePassingNulls(boolean)}
 	 * <p/>
 	 * Values are {@code true} (pass the NULLs) or {@code false} (do not pass the NULLs).
+	 *
+	 * @deprecated (5.3) Hibernate determines it implicitly
 	 */
+	@Deprecated
 	String PROCEDURE_NULL_PARAM_PASSING = "hibernate.proc.param_null_passing";
 
 	/**
@@ -1677,7 +1831,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * a JPA {@link javax.persistence.EntityManager}).
 	 * <p>
 	 * <p/>
-	 * Values are {@code true} permits the refresh, {@code false} does not permit the detached instance refresh and an {@link IllegalArgumentException} is thrown.
+	 * Values are: {@code true} permits the refresh, {@code false} does not permit the detached instance refresh and an {@link IllegalArgumentException} is thrown.
 	 * <p/>
 	 * The default value is {@code false} when the Session is bootstrapped via JPA {@link javax.persistence.EntityManagerFactory}, otherwise is {@code true}
 	 *
@@ -1764,7 +1918,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 *
 	 * The default value is `true` meaning that {@link GeneratedValue#generator()} will be used as the
 	 * sequence/table name by default.  Users migrating from earlier versions using the legacy
-	 * `hibernate_sequence` name should disable this setting,
+	 * `hibernate_sequence` name should disable this setting.
 	 */
 	String PREFER_GENERATOR_NAME_AS_DEFAULT_SEQUENCE_NAME = "hibernate.model.generator_name_as_sequence_name";
 
@@ -1781,7 +1935,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	/**
 	 * Controls whether Hibernate's handling of {@link javax.persistence.Query}
 	 * (JPQL, Criteria and native-query) should strictly follow the JPA spec.
-	 * Tis includes both in terms of parsing or translating a query as well
+	 * This includes both in terms of parsing or translating a query as well
 	 * as calls to the {@link javax.persistence.Query} methods throwing spec
 	 * defined exceptions where as Hibernate might not.
 	 *
@@ -1797,7 +1951,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * ({@link org.hibernate.collection.internal.PersistentBag}) as a List
 	 * ({@link org.hibernate.collection.internal.PersistentList}) or as a bag.
 	 *
-	 * If enabled, we will recognize it as a List where {@link @{@link javax.persistence.OrderColumn}}
+	 * If enabled, we will recognize it as a List where {@link javax.persistence.OrderColumn}
 	 * is just missing (and its defaults will apply).
 	 *
 	 * @see JpaCompliance#isJpaListComplianceEnabled()
@@ -1820,7 +1974,7 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	String JPA_CLOSED_COMPLIANCE = "hibernate.jpa.compliance.closed";
 
 	/**
-	 * JPA spec says that an {@link javax.persistence.EntityNotFoundException}
+	 * The JPA spec says that a {@link javax.persistence.EntityNotFoundException}
 	 * should be thrown when accessing an entity Proxy which does not have an associated
 	 * table row in the database.
 	 *
@@ -1833,6 +1987,24 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * @since 5.2.13
 	 */
 	String JPA_PROXY_COMPLIANCE = "hibernate.jpa.compliance.proxy";
+
+	/**
+	 * @see JpaCompliance#isJpaCacheComplianceEnabled()
+	 * @since 5.3
+	 */
+	String JPA_CACHING_COMPLIANCE = "hibernate.jpa.compliance.caching";
+
+	/**
+	 * Determine if the scope of {@link javax.persistence.TableGenerator#name()} and {@link javax.persistence.SequenceGenerator#name()} should be
+	 * considered globally or locally defined.
+	 *
+	 * If enabled, the names will be considered globally scoped so defining two different generators with the same name
+	 * will cause a name collision and an exception will be thrown during the bootstrap phase.
+	 *
+	 * @see JpaCompliance#isGlobalGeneratorScopeEnabled()
+	 * @since 5.2.17
+	 */
+	String JPA_ID_GENERATOR_GLOBAL_SCOPE_COMPLIANCE = "hibernate.jpa.compliance.global_id_generators";
 
 	/**
 	 * True/False setting indicating if the value stored in the table used by the {@link javax.persistence.TableGenerator}
@@ -1851,4 +2023,83 @@ public interface AvailableSettings extends org.hibernate.jpa.AvailableSettings {
 	 * @since 5.2.13
 	 */
 	String FAIL_ON_PAGINATION_OVER_COLLECTION_FETCH = "hibernate.query.fail_on_pagination_over_collection_fetch";
+
+	/**
+	 * This setting defines how {@link org.hibernate.annotations.Immutable} entities are handled when executing a
+	 * bulk update {@link javax.persistence.Query}.
+	 *
+	 * By default, the ({@link ImmutableEntityUpdateQueryHandlingMode#WARNING}) mode is used, meaning that
+	 * a warning log message is issued when an {@link org.hibernate.annotations.Immutable} entity
+	 * is to be updated via a bulk update statement.
+	 *
+	 * If the ({@link ImmutableEntityUpdateQueryHandlingMode#EXCEPTION}) mode is used, then a
+	 * {@link HibernateException} is thrown instead.
+	 * </p>
+	 * Valid options are defined by the {@link ImmutableEntityUpdateQueryHandlingMode} enum.
+	 * </p>
+	 * The default value is {@link ImmutableEntityUpdateQueryHandlingMode#WARNING}
+	 *
+	 * @since 5.2.17
+	 * @see org.hibernate.query.ImmutableEntityUpdateQueryHandlingMode
+	 */
+	String IMMUTABLE_ENTITY_UPDATE_QUERY_HANDLING_MODE = "hibernate.query.immutable_entity_update_query_handling_mode";
+
+	/**
+	 * By default, the IN clause expands to include all bind parameter values.
+	 * </p>
+	 * However, for database systems supporting execution plan caching,
+	 * there's a better chance of hitting the cache if the number of possible IN clause parameters lowers.
+	 * </p>
+	 * For this reason, we can expand the bind parameters to power-of-two: 4, 8, 16, 32, 64.
+	 * This way, an IN clause with 5, 6, or 7 bind parameters will use the 8 IN clause,
+	 * therefore reusing its execution plan.
+	 * </p>
+	 * If you want to activate this feature, you need to set this property to {@code true}.
+	 * </p>
+	 * The default value is {@code false}.
+	 *
+	 * @since 5.2.17
+	 */
+	String IN_CLAUSE_PARAMETER_PADDING = "hibernate.query.in_clause_parameter_padding";
+
+	/**
+	 * This setting controls the number of {@link org.hibernate.stat.QueryStatistics} entries
+	 * that will be stored by the Hibernate {@link org.hibernate.stat.Statistics} object.
+	 * </p>
+	 * The default value is given by the {@link org.hibernate.stat.Statistics#DEFAULT_QUERY_STATISTICS_MAX_SIZE} constant value.
+	 *
+	 * @since 5.4
+	 */
+	String QUERY_STATISTICS_MAX_SIZE = "hibernate.statistics.query_max_size";
+
+	/**
+	 * This setting defines the {@link org.hibernate.id.SequenceMismatchStrategy} used when
+	 * Hibernate detects a mismatch between a sequence configuration in an entity mapping
+	 * and its database sequence object counterpart.
+	 * </p>
+	 * Possible values are {@link org.hibernate.id.SequenceMismatchStrategy#EXCEPTION},
+	 * {@link org.hibernate.id.SequenceMismatchStrategy#LOG}, and
+	 * {@link org.hibernate.id.SequenceMismatchStrategy#FIX}.
+	 * </p>
+	 * The default value is given by the {@link org.hibernate.id.SequenceMismatchStrategy#EXCEPTION},
+	 * meaning that an Exception is thrown when detecting such a conflict.
+	 *
+	 * @since 5.4
+	 */
+	String SEQUENCE_INCREMENT_SIZE_MISMATCH_STRATEGY = "hibernate.id.sequence.increment_size_mismatch_strategy";
+
+	/**
+	 * <p>
+	 * When you use {@link javax.persistence.InheritanceType#JOINED} strategy for inheritance mapping and query
+	 * a value from an entity, all superclass tables are joined in the query regardless you need them. With
+	 * this setting set to true only superclass tables which are really needed are joined.
+	 * </p>
+	 * <p>
+	 * The default value is true.
+	 * </p>
+	 *
+	 * @since 5.4
+	 */
+	String OMIT_JOIN_OF_SUPERCLASS_TABLES = "hibernate.query.omit_join_of_superclass_tables";
+
 }

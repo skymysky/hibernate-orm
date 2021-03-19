@@ -13,8 +13,9 @@ ext {
 			'documentation',
 			'hibernate-entitymanager',
 			'hibernate-infinispan',
+			'hibernate-ehcache',
 			'hibernate-java8',
-			'hibernate-orm-modules',
+			'hibernate-integrationtest-java-modules',
 			'release'
 	]
 }
@@ -39,31 +40,37 @@ dependencies {
 
 	compile( libraries.jpa )
 	compile( project( ':hibernate-core' ) )
-	compile( project( ':hibernate-jpamodelgen' ) )
+	annotationProcessor( project( ':hibernate-jpamodelgen' ) )
 
 	testCompile( 'org.apache.commons:commons-lang3:3.4' )
 
-	testCompile( project(':hibernate-ehcache') )
 	testCompile( project(':hibernate-envers') )
 	testCompile( project(':hibernate-spatial') )
 	testCompile( project(path: ':hibernate-core', configuration: 'tests') )
 
 	testCompile( project(':hibernate-testing') )
 
+	testCompile "org.osgi:org.osgi.core:4.3.1"
+
 	testCompile( libraries.mockito )
 	testCompile( libraries.mockito_inline )
+
+	testRuntime( libraries.wildfly_transaction_client )
 	testRuntime( libraries.h2 )
 	testRuntime( libraries.hsqldb )
 	testRuntime( libraries.postgresql )
 	testRuntime( libraries.mysql )
 	testRuntime( libraries.mariadb )
 	testRuntime( libraries.mssql )
+	testRuntime( libraries.hana )
+	testRuntime( libraries.cockroachdb )
 
-	testCompile "org.osgi:org.osgi.core:4.3.1"
+	testCompile( project( ':hibernate-jcache' ) )
+	testRuntime( libraries.ehcache3 )
 }
 
 
-if ( project.isSnapshot ) {
+if ( project.ormVersion.isSnapshot ) {
 	// only run the ci build tasks for SNAPSHOT versions
 	task ciBuild( dependsOn: [clean, test] )
 }
@@ -118,13 +125,33 @@ task aggregateJavadocs(type: Javadoc) {
 
 		links = [
 				'https://docs.oracle.com/javase/8/docs/api/',
-				'https://docs.jboss.org/hibernate/beanvalidation/spec/2.0/api/',
+				'http://docs.jboss.org/hibernate/beanvalidation/spec/2.0/api/',
 				'http://docs.jboss.org/cdi/api/2.0/',
-				'https://docs.oracle.com/javaee/7/api/'
+				'https://javaee.github.io/javaee-spec/javadocs/'
 		]
+		
+		if ( gradle.ext.javaVersions.main.compiler.asInt() >= 11 ) {
+			//The need to set `--source 1.8` applies to all JVMs after 11, and also to 11
+			// but after excluding the first two builds; see also specific comments on
+			// https://bugs.openjdk.java.net/browse/JDK-8212233?focusedCommentId=14245762
+			// For now, let's be compatible with JDK 11.0.3+. We can improve on it if people
+			// complain they cannot build with JDK 11.0.0, 11.0.1 and 11.0.2.
+			logger.lifecycle "Forcing Javadoc in Java 8 compatible mode"
+			options.source = gradle.ext.baselineJavaVersion
+		}
 
-		if ( JavaVersion.current().isJava8Compatible() ) {
-			options.addStringOption( 'Xdoclint:none', '-quiet' )
+		options.addStringOption( 'Xdoclint:none', '-quiet' )
+
+		if ( gradle.ext.javaToolchainEnabled ) {
+			options.setJFlags( getProperty( 'toolchain.javadoc.jvmargs' ).toString().
+							split( ' ' ).toList().findAll( { !it.isEmpty() } ) )
+		}
+	}
+
+	if ( gradle.ext.javaToolchainEnabled ) {
+		// Display version of Java tools
+		doFirst {
+			logger.lifecycle "Aggregating javadoc with '${javadocTool.get().metadata.installationPath}'"
 		}
 	}
 
@@ -156,7 +183,16 @@ task renderTopicalGuides(type: AsciidoctorTask, group: 'Documentation') {
 	backends "html5"
 	separateOutputDirs false
 	options logDocuments: true
-	attributes  icons: 'font', experimental: true, 'source-highlighter': 'prettify', majorMinorVersion: rootProject.hibernateMajorMinorVersion, fullVersion: rootProject.hibernateVersion
+	attributes  icons: 'font',
+				experimental: true,
+				'source-highlighter': 'prettify',
+				majorMinorVersion: rootProject.ormVersion.family,
+				fullVersion: rootProject.ormVersion.fullName
+	resources {
+		from('src/main/asciidoc/topical/') {
+			include '**/images/**'
+		}
+	}
 }
 
 
@@ -165,6 +201,9 @@ task renderTopicalGuides(type: AsciidoctorTask, group: 'Documentation') {
 task renderGettingStartedGuides(type: AsciidoctorTask, group: 'Documentation') {
     description = 'Renders the Getting Started Guides (quick starts) in HTML format using Asciidoctor.'
     sourceDir = file( 'src/main/asciidoc/quickstart/guides' )
+    sources {
+        include 'index.adoc'
+    }
     outputDir = new File("$buildDir/asciidoc/quickstart/html_single")
 	backends "html5"
 	separateOutputDirs false
@@ -187,32 +226,14 @@ task buildTutorialZip(type: Zip) {
 
 renderGettingStartedGuides.dependsOn buildTutorialZip
 
-
-
-// Mapping Guides ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-task renderMappingGuide(type: AsciidoctorTask, group: 'Documentation') {
-    description = 'Renders the Mapping Guides in HTML format using Asciidoctor.'
-    sourceDir = file( 'src/main/asciidoc/mapping' )
-    outputDir = new File("$buildDir/asciidoc/mapping/html")
-    backends "html5"
-    separateOutputDirs false
-    options logDocuments: true
-    //attributes  icons: 'font', experimental: true, 'source-highlighter': 'prettify', linkcss: true, stylesheet: "css/hibernate.css"
-    attributes  icons: 'font', experimental: true, 'source-highlighter': 'prettify', linkcss: true
-    resources {
-        from('src/main/asciidoc/') {
-            include 'images/**'
-            include 'css/**'
-        }
-    }
-}
-
 // User Guide ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 task renderUserGuide(type: AsciidoctorTask, group: 'Documentation') {
     description = 'Renders the User Guides in HTML format using Asciidoctor.'
     sourceDir = file( 'src/main/asciidoc/userguide' )
+    sources {
+        include 'Hibernate_User_Guide.adoc'
+    }
     outputDir = new File("$buildDir/asciidoc/userguide/html_single")
     backends "html5"
     separateOutputDirs false
@@ -221,9 +242,10 @@ task renderUserGuide(type: AsciidoctorTask, group: 'Documentation') {
 			   'source-highlighter': 'prettify',
 			   linkcss: true,
 			   stylesheet: "css/hibernate.css",
-			   majorMinorVersion: rootProject.hibernateMajorMinorVersion,
-			   fullVersion: rootProject.hibernateVersion,
-			   docinfo: true
+			   majorMinorVersion: rootProject.ormVersion.family,
+			   fullVersion: rootProject.ormVersion.fullName,
+			   docinfo: 'private',
+			   jpaJavadocUrlPrefix: "https://javaee.github.io/javaee-spec/javadocs/javax/persistence/"
 
 	resources {
         from('src/main/asciidoc/userguide/') {
@@ -246,11 +268,19 @@ task renderUserGuide(type: AsciidoctorTask, group: 'Documentation') {
 task renderIntegrationGuide(type: AsciidoctorTask, group: 'Documentation') {
 	description = 'Renders the User Guides in HTML format using Asciidoctor.'
 	sourceDir = file( 'src/main/asciidoc/integrationguide' )
+	sources {
+		include 'Hibernate_Integration_Guide.adoc'
+	}
 	outputDir = new File("$buildDir/asciidoc/integrationguide/html_single")
 	backends "html5"
 	separateOutputDirs false
 	options logDocuments: true
-	attributes  icons: 'font', experimental: true, 'source-highlighter': 'prettify', linkcss: true, stylesheet: "css/hibernate.css", majorMinorVersion: rootProject.hibernateMajorMinorVersion
+	attributes  icons: 'font',
+				experimental: true,
+				'source-highlighter': 'prettify',
+				linkcss: true,
+				stylesheet: "css/hibernate.css",
+				majorMinorVersion: rootProject.ormVersion.family
 	resources {
 		from('src/main/asciidoc/integrationguide/') {
 			include 'images/**'
@@ -263,6 +293,14 @@ task renderIntegrationGuide(type: AsciidoctorTask, group: 'Documentation') {
 		}
 	}
 }
+
+// Testing
+
+// resources inherently exclude sources
+sourceSets.test.resources {
+	setSrcDirs( ['src/test/java','src/test/resources'] )
+}
+
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // grouping tasks

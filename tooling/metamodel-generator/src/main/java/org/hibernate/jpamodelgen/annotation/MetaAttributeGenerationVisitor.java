@@ -77,7 +77,7 @@ public class MetaAttributeGenerationVisitor extends SimpleTypeVisitor6<Annotatio
 //				}
 //			}
 //			return attribute;
-		return new AnnotationMetaSingleAttribute( entity, element, TypeUtils.toTypeString( t ) );
+		return new AnnotationMetaSingleAttribute( entity, element, TypeUtils.toArrayTypeString( t, context ) );
 	}
 
 	@Override
@@ -138,14 +138,29 @@ public class MetaAttributeGenerationVisitor extends SimpleTypeVisitor6<Annotatio
 				accessTypeInfo.setDefaultAccessType( entity.getEntityAccessTypeInfo().getAccessType() );
 			}
 		}
-		if ( collection.equals( "javax.persistence.metamodel.MapAttribute" ) ) {
-			return createAnnotationMetaAttributeForMap( declaredType, element, collection, targetEntity );
-		}
-		else {
-			return new AnnotationMetaCollection(
-					entity, element, collection, getElementType( declaredType, targetEntity )
+		if ( TypeUtils.containsAnnotation(
+				element,
+				Constants.BASIC,
+				Constants.CONVERT,
+				Constants.HIBERNATE_TYPE
+		) && !TypeUtils.containsAnnotation(
+				element,
+				Constants.ONE_TO_MANY,
+				Constants.MANY_TO_MANY,
+				Constants.ELEMENT_COLLECTION
+		) ) {
+			return new AnnotationMetaSingleAttribute(
+					entity,
+					element,
+					TypeUtils.toTypeString( declaredType )
 			);
 		}
+		if ( collection.equals( Constants.MAP_ATTRIBUTE ) ) {
+			return createAnnotationMetaAttributeForMap( declaredType, element, collection, targetEntity );
+		}
+		return new AnnotationMetaCollection(
+				entity, element, collection, getElementType( declaredType, targetEntity )
+		);
 	}
 
 	@Override

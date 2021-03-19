@@ -8,9 +8,9 @@ package org.hibernate.persister.walking.internal;
 
 import java.util.Iterator;
 
+import org.hibernate.FetchMode;
 import org.hibernate.engine.FetchStrategy;
 import org.hibernate.engine.FetchStyle;
-import org.hibernate.engine.FetchTiming;
 import org.hibernate.engine.spi.CascadeStyle;
 import org.hibernate.engine.spi.CascadeStyles;
 import org.hibernate.engine.spi.LoadQueryInfluencers;
@@ -122,6 +122,7 @@ public final class CompositionSingularSubAttributesHelper {
 
 						final String name = compositeType.getPropertyNames()[subAttributeNumber];
 						final Type type = compositeType.getSubtypes()[subAttributeNumber];
+						final FetchMode fetchMode = compositeType.getFetchMode( subAttributeNumber );
 
 						final int columnPosition = currentColumnPosition;
 						final int columnSpan = type.getColumnSpan( ownerEntityPersister.getFactory() );
@@ -170,7 +171,7 @@ public final class CompositionSingularSubAttributesHelper {
 												"Cannot build AnyMappingDefinition from non-any-typed attribute"
 										);
 									}
-									// todo : not sure how lazy is propogated into the component for a subattribute of type any
+									// todo : not sure how lazy is propagated into the component for a sub-attribute of type any
 									return new StandardAnyTypeDefinition( (AnyType) aType, false );
 								}
 
@@ -181,7 +182,19 @@ public final class CompositionSingularSubAttributesHelper {
 
 								@Override
 								public FetchStrategy determineFetchPlan(LoadQueryInfluencers loadQueryInfluencers, PropertyPath propertyPath) {
-									return new FetchStrategy( FetchTiming.IMMEDIATE, FetchStyle.JOIN );
+									final FetchStyle style = FetchStrategyHelper.determineFetchStyleByMetadata(
+											fetchMode,
+											(AssociationType) type,
+											ownerEntityPersister.getFactory()
+									);
+									return new FetchStrategy(
+											FetchStrategyHelper.determineFetchTiming(
+													style,
+													getType(),
+													ownerEntityPersister.getFactory()
+											),
+											style
+									);
 								}
 
 								@Override

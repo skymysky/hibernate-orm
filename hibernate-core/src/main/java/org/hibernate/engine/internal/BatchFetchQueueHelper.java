@@ -58,7 +58,6 @@ public class BatchFetchQueueHelper {
 			// All results should be in the PersistenceContext
 			idSet.remove( session.getContextEntityIdentifier( result ) );
 		}
-		assert idSet.size() == ids.length - results.size();
 		if ( LOG.isDebugEnabled() ) {
 			LOG.debug( "Entities of type [" + persister.getEntityName() + "] not found; IDs: " + idSet );
 		}
@@ -80,7 +79,7 @@ public class BatchFetchQueueHelper {
 			EntityPersister persister,
 			SharedSessionContractImplementor session) {
 		final EntityKey entityKey = session.generateEntityKey( id, persister );
-		final BatchFetchQueue batchFetchQueue = session.getPersistenceContext().getBatchFetchQueue();
+		final BatchFetchQueue batchFetchQueue = session.getPersistenceContextInternal().getBatchFetchQueue();
 		batchFetchQueue.removeBatchLoadableEntityKey( entityKey );
 	}
 }

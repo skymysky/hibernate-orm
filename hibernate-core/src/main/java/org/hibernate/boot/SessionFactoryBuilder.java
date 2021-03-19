@@ -6,6 +6,9 @@
  */
 package org.hibernate.boot;
 
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.CustomEntityDirtinessStrategy;
 import org.hibernate.EntityMode;
@@ -15,20 +18,17 @@ import org.hibernate.MultiTenancyStrategy;
 import org.hibernate.NullPrecedence;
 import org.hibernate.SessionFactory;
 import org.hibernate.SessionFactoryObserver;
-import org.hibernate.cache.spi.QueryCacheFactory;
+import org.hibernate.cache.spi.TimestampsCacheFactory;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.hibernate.dialect.function.SQLFunction;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
-import org.hibernate.jpa.JpaCompliance;
+import org.hibernate.jpa.spi.JpaCompliance;
 import org.hibernate.loader.BatchFetchStyle;
 import org.hibernate.proxy.EntityNotFoundDelegate;
 import org.hibernate.resource.jdbc.spi.PhysicalConnectionHandlingMode;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.hibernate.tuple.entity.EntityTuplizer;
 import org.hibernate.tuple.entity.EntityTuplizerFactory;
-
-import java.util.Map;
-import java.util.function.Supplier;
 
 /**
  * The contract for building a {@link org.hibernate.SessionFactory} given a number of options.
@@ -38,6 +38,7 @@ import java.util.function.Supplier;
  *
  * @since 5.0
  */
+@SuppressWarnings("UnusedReturnValue")
 public interface SessionFactoryBuilder {
 	/**
 	 * Apply a Bean Validation ValidatorFactory to the SessionFactory being built.
@@ -303,6 +304,14 @@ public interface SessionFactoryBuilder {
 	SessionFactoryBuilder applyBatchFetchStyle(BatchFetchStyle style);
 
 	/**
+	 * Should entity Loaders be generated immediately?  Or should the creation
+	 * be delayed until first need?
+	 *
+	 * @see org.hibernate.cfg.AvailableSettings#DELAY_ENTITY_LOADER_CREATIONS
+	 */
+	SessionFactoryBuilder applyDelayedEntityLoaderCreations(boolean delay);
+
+	/**
 	 * Allows specifying a default batch-fetch size for all entities and collections
 	 * which do not otherwise specify a batch-fetch size.
 	 *
@@ -491,7 +500,7 @@ public interface SessionFactoryBuilder {
 	 *
 	 * @see org.hibernate.cfg.AvailableSettings#QUERY_CACHE_FACTORY
 	 */
-	SessionFactoryBuilder applyQueryCacheFactory(QueryCacheFactory factory);
+	SessionFactoryBuilder applyTimestampsCacheFactory(TimestampsCacheFactory factory);
 
 	/**
 	 * Apply a prefix to prepended to all cache region names for this SessionFactory.
@@ -644,7 +653,7 @@ public interface SessionFactoryBuilder {
 	/**
 	 * Apply a fetch size to the JDBC driver for fetching results.
 	 *
-	 * @param size The fetch saize to be passed to the driver.
+	 * @param size The fetch size to be passed to the driver.
 	 *
 	 * @return {@code this}, for method chaining
 	 *
@@ -742,7 +751,6 @@ public interface SessionFactoryBuilder {
 	 * @see JpaCompliance#isJpaClosedComplianceEnabled()
 	 */
 	SessionFactoryBuilder enableJpaClosedCompliance(boolean enabled);
-
 
 	/**
 	 * Allows unwrapping this builder as another, more specific type.

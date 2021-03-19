@@ -45,10 +45,22 @@ public class JmxServiceImpl implements JmxService, Stoppable {
 		usePlatformServer = ConfigurationHelper.getBoolean( AvailableSettings.JMX_PLATFORM_SERVER, configValues );
 		agentId = (String) configValues.get( AvailableSettings.JMX_AGENT_ID );
 		defaultDomain = (String) configValues.get( AvailableSettings.JMX_DOMAIN_NAME );
+
+		String defaultSessionFactoryName = ConfigurationHelper.getString(
+				Environment.SESSION_FACTORY_NAME,
+				configValues
+		);
+		if ( defaultSessionFactoryName == null ) {
+			defaultSessionFactoryName = ConfigurationHelper.getString(
+					Environment.PERSISTENCE_UNIT_NAME,
+					configValues
+			);
+		}
+
 		sessionFactoryName = ConfigurationHelper.getString(
 				AvailableSettings.JMX_SF_NAME,
 				configValues,
-				ConfigurationHelper.getString( Environment.SESSION_FACTORY_NAME, configValues )
+				defaultSessionFactoryName
 		);
 	}
 
@@ -181,7 +193,7 @@ public class JmxServiceImpl implements JmxService, Stoppable {
 		}
 
 		for ( MBeanServer mbeanServer : mbeanServers ) {
-			// they did specify a domain, so attempt to locate an MBEanServer with a matching default domain, returning it
+			// they did specify a domain, so attempt to locate an MBeanServer with a matching default domain, returning it
 			// if we find it.
 			if ( defaultDomain.equals( mbeanServer.getDefaultDomain() ) ) {
 				return mbeanServer;

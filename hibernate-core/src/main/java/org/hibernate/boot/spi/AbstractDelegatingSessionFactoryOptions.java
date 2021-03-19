@@ -6,6 +6,10 @@
  */
 package org.hibernate.boot.spi;
 
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.function.Supplier;
+
 import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.CustomEntityDirtinessStrategy;
 import org.hibernate.EntityMode;
@@ -17,22 +21,19 @@ import org.hibernate.SessionFactoryObserver;
 import org.hibernate.boot.SchemaAutoTooling;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
 import org.hibernate.boot.registry.StandardServiceRegistry;
-import org.hibernate.cache.spi.QueryCacheFactory;
+import org.hibernate.cache.spi.TimestampsCacheFactory;
 import org.hibernate.cfg.BaselineSessionEventsListenerBuilder;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.hibernate.dialect.function.SQLFunction;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
-import org.hibernate.jpa.JpaCompliance;
+import org.hibernate.jpa.spi.JpaCompliance;
 import org.hibernate.loader.BatchFetchStyle;
 import org.hibernate.proxy.EntityNotFoundDelegate;
+import org.hibernate.query.ImmutableEntityUpdateQueryHandlingMode;
 import org.hibernate.query.criteria.LiteralHandlingMode;
 import org.hibernate.resource.jdbc.spi.PhysicalConnectionHandlingMode;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.hibernate.tuple.entity.EntityTuplizerFactory;
-
-import java.util.Map;
-import java.util.TimeZone;
-import java.util.function.Supplier;
 
 /**
  * Convenience base class for custom implementors of SessionFactoryOptions, using delegation
@@ -49,6 +50,11 @@ public class AbstractDelegatingSessionFactoryOptions implements SessionFactoryOp
 
 	protected SessionFactoryOptions delegate() {
 		return delegate;
+	}
+
+	@Override
+	public String getUuid() {
+		return delegate().getUuid();
 	}
 
 	@Override
@@ -167,6 +173,11 @@ public class AbstractDelegatingSessionFactoryOptions implements SessionFactoryOp
 	}
 
 	@Override
+	public boolean isDelayBatchFetchLoaderCreationsEnabled() {
+		return delegate.isDelayBatchFetchLoaderCreationsEnabled();
+	}
+
+	@Override
 	public int getDefaultBatchFetchSize() {
 		return delegate.getDefaultBatchFetchSize();
 	}
@@ -252,8 +263,8 @@ public class AbstractDelegatingSessionFactoryOptions implements SessionFactoryOp
 	}
 
 	@Override
-	public QueryCacheFactory getQueryCacheFactory() {
-		return delegate.getQueryCacheFactory();
+	public TimestampsCacheFactory getTimestampsCacheFactory() {
+		return delegate.getTimestampsCacheFactory();
 	}
 
 	@Override
@@ -405,5 +416,45 @@ public class AbstractDelegatingSessionFactoryOptions implements SessionFactoryOp
 	@Override
 	public boolean isFailOnPaginationOverCollectionFetchEnabled() {
 		return delegate.isFailOnPaginationOverCollectionFetchEnabled();
+	}
+
+	@Override
+	public ImmutableEntityUpdateQueryHandlingMode getImmutableEntityUpdateQueryHandlingMode() {
+		return delegate.getImmutableEntityUpdateQueryHandlingMode();
+	}
+
+	@Override
+	public boolean inClauseParameterPaddingEnabled() {
+		return delegate.inClauseParameterPaddingEnabled();
+	}
+
+	@Override
+	public boolean nativeExceptionHandling51Compliance() {
+		return delegate.nativeExceptionHandling51Compliance();
+	}
+
+	@Override
+	public int getQueryStatisticsMaxSize() {
+		return delegate.getQueryStatisticsMaxSize();
+	}
+
+	@Override
+	public boolean areJPACallbacksEnabled() {
+		return delegate.areJPACallbacksEnabled();
+	}
+
+	@Override
+	public boolean isEnhancementAsProxyEnabled() {
+		return delegate.isEnhancementAsProxyEnabled();
+	}
+
+	@Override
+	public boolean isCollectionsInDefaultFetchGroupEnabled() {
+		return delegate.isCollectionsInDefaultFetchGroupEnabled();
+	}
+
+	@Override
+	public boolean isOmitJoinOfSuperclassTablesEnabled() {
+		return delegate.isOmitJoinOfSuperclassTablesEnabled();
 	}
 }

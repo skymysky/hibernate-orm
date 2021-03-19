@@ -10,11 +10,11 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Objects;
 
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.internal.util.ValueHolder;
-import org.hibernate.internal.util.compare.EqualsHelper;
 import org.hibernate.type.EntityType;
 import org.hibernate.type.Type;
 
@@ -86,7 +86,7 @@ public class NaturalIdCacheKey implements Serializable {
 					@Override
 					public String initialize() {
 						//Complex toString is needed as naturalIds for entities are not simply based on a single value like primary keys
-						//the only same way to differentiate the keys is to included the disassembled values in the string.
+						//the only same way to differentiate the keys is to include the disassembled values in the string.
 						final StringBuilder toStringBuilder = new StringBuilder().append( entityName ).append(
 								"##NaturalId[" );
 						for ( int i = 0; i < naturalIdValues.length; i++ ) {
@@ -143,8 +143,8 @@ public class NaturalIdCacheKey implements Serializable {
 		}
 
 		final NaturalIdCacheKey other = (NaturalIdCacheKey) o;
-		return EqualsHelper.equals( entityName, other.entityName )
-				&& EqualsHelper.equals( tenantId, other.tenantId )
+		return Objects.equals( entityName, other.entityName )
+				&& Objects.equals( tenantId, other.tenantId )
 				&& Arrays.deepEquals( this.naturalIdValues, other.naturalIdValues );
 	}
 

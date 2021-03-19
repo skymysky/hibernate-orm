@@ -30,8 +30,9 @@ import org.hibernate.boot.internal.ClassLoaderAccessImpl;
 import org.hibernate.boot.jaxb.Origin;
 import org.hibernate.boot.jaxb.SourceType;
 import org.hibernate.boot.registry.classloading.spi.ClassLoaderService;
+import org.hibernate.boot.registry.classloading.spi.ClassLoadingException;
+import org.hibernate.boot.spi.BootstrapContext;
 import org.hibernate.boot.spi.ClassLoaderAccess;
-import org.hibernate.boot.spi.MetadataBuildingOptions;
 import org.hibernate.boot.spi.XmlMappingBinderAccess;
 import org.hibernate.cfg.AttributeConverterDefinition;
 import org.hibernate.service.ServiceRegistry;
@@ -57,36 +58,36 @@ public class ScanningCoordinator {
 
 	public void coordinateScan(
 			ManagedResourcesImpl managedResources,
-			MetadataBuildingOptions options,
+			BootstrapContext bootstrapContext,
 			XmlMappingBinderAccess xmlMappingBinderAccess) {
-		if ( options.getScanEnvironment() == null ) {
+		if ( bootstrapContext.getScanEnvironment() == null ) {
 			return;
 		}
 
-		final ClassLoaderService classLoaderService = options.getServiceRegistry().getService( ClassLoaderService.class );
+		final ClassLoaderService classLoaderService = bootstrapContext.getServiceRegistry().getService( ClassLoaderService.class );
 		final ClassLoaderAccess classLoaderAccess = new ClassLoaderAccessImpl(
-				options.getTempClassLoader(),
+				bootstrapContext.getJpaTempClassLoader(),
 				classLoaderService
 		);
 
 		// NOTE : the idea with JandexInitializer/JandexInitManager was to allow adding classes
 		// to the index as we discovered them via scanning and .  Currently
-		final Scanner scanner = buildScanner( options, classLoaderAccess );
+		final Scanner scanner = buildScanner( bootstrapContext, classLoaderAccess );
 		final ScanResult scanResult = scanner.scan(
-				options.getScanEnvironment(),
-				options.getScanOptions(),
+				bootstrapContext.getScanEnvironment(),
+				bootstrapContext.getScanOptions(),
 				StandardScanParameters.INSTANCE
 		);
 
-		applyScanResultsToManagedResources( managedResources, scanResult, options, xmlMappingBinderAccess );
+		applyScanResultsToManagedResources( managedResources, scanResult, bootstrapContext, xmlMappingBinderAccess );
 	}
 
 	private static final Class[] SINGLE_ARG = new Class[] { ArchiveDescriptorFactory.class };
 
 	@SuppressWarnings("unchecked")
-	private static Scanner buildScanner(MetadataBuildingOptions options, ClassLoaderAccess classLoaderAccess) {
-		final Object scannerSetting = options.getScanner();
-		final ArchiveDescriptorFactory archiveDescriptorFactory = options.getArchiveDescriptorFactory();
+	private static Scanner buildScanner(BootstrapContext bootstrapContext, ClassLoaderAccess classLoaderAccess) {
+		final Object scannerSetting = bootstrapContext.getScanner();
+		final ArchiveDescriptorFactory archiveDescriptorFactory = bootstrapContext.getArchiveDescriptorFactory();
 
 		if ( scannerSetting == null ) {
 			// No custom Scanner specified, use the StandardScanner
@@ -111,7 +112,7 @@ public class ScanningCoordinator {
 				return (Scanner) scannerSetting;
 			}
 
-			final Class<? extends  Scanner> scannerImplClass;
+			final Class<? extends Scanner> scannerImplClass;
 			if ( Class.class.isInstance( scannerSetting ) ) {
 				scannerImplClass = (Class<? extends Scanner>) scannerSetting;
 			}
@@ -186,11 +187,11 @@ public class ScanningCoordinator {
 	public void applyScanResultsToManagedResources(
 			ManagedResourcesImpl managedResources,
 			ScanResult scanResult,
-			MetadataBuildingOptions options,
+			BootstrapContext bootstrapContext,
 			XmlMappingBinderAccess xmlMappingBinderAccess) {
 
-		final ScanEnvironment scanEnvironment = options.getScanEnvironment();
-		final ServiceRegistry serviceRegistry = options.getServiceRegistry();
+		final ScanEnvironment scanEnvironment = bootstrapContext.getScanEnvironment();
+		final ServiceRegistry serviceRegistry = bootstrapContext.getServiceRegistry();
 		final ClassLoaderService classLoaderService = serviceRegistry.getService( ClassLoaderService.class );
 
 
@@ -202,23 +203,24 @@ public class ScanningCoordinator {
 			nonLocatedMappingFileNames.addAll( explicitMappingFileNames );
 		}
 
-		for ( MappingFileDescriptor mappingFileDescriptor : scanResult.getLocatedMappingFiles() ) {
-			managedResources.addXmlBinding( xmlMappingBinderAccess.bind( mappingFileDescriptor.getStreamAccess() ) );
-			nonLocatedMappingFileNames.remove( mappingFileDescriptor.getName() );
-		}
-
-		for ( String name : nonLocatedMappingFileNames ) {
-			final URL url = classLoaderService.locateResource( name );
-			if ( url == null ) {
-				throw new MappingException(
-						"Unable to resolve explicitly named mapping-file : " + name,
-						new Origin( SourceType.RESOURCE, name )
-				);
+		if ( xmlMappingBinderAccess != null ) { // xml mapping is not disabled
+			for ( MappingFileDescriptor mappingFileDescriptor : scanResult.getLocatedMappingFiles() ) {
+				managedResources.addXmlBinding( xmlMappingBinderAccess.bind( mappingFileDescriptor.getStreamAccess() ) );
+				nonLocatedMappingFileNames.remove( mappingFileDescriptor.getName() );
 			}
-			final UrlInputStreamAccess inputStreamAccess = new UrlInputStreamAccess( url );
-			managedResources.addXmlBinding( xmlMappingBinderAccess.bind( inputStreamAccess ) );
-		}
 
+			for ( String name : nonLocatedMappingFileNames ) {
+				final URL url = classLoaderService.locateResource( name );
+				if ( url == null ) {
+					throw new MappingException(
+							"Unable to resolve explicitly named mapping-file : " + name,
+							new Origin( SourceType.RESOURCE, name )
+					);
+				}
+				final UrlInputStreamAccess inputStreamAccess = new UrlInputStreamAccess( url );
+				managedResources.addXmlBinding( xmlMappingBinderAccess.bind( inputStreamAccess ) );
+			}
+		}
 
 		// classes and packages ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -266,6 +268,16 @@ public class ScanningCoordinator {
 			if ( packageInfoFileUrl != null ) {
 				managedResources.addAnnotatedPackageName( unresolvedListedClassName );
 				continue;
+			}
+
+			// Last, try it by loading the class
+			try {
+				Class<?> clazz = classLoaderService.classForName( unresolvedListedClassName );
+				managedResources.addAnnotatedClassReference( clazz );
+				continue;
+			}
+			catch (ClassLoadingException ignore) {
+				// ignore this error
 			}
 
 			log.debugf(

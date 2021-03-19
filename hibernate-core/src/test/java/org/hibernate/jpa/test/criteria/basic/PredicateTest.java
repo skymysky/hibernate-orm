@@ -13,18 +13,21 @@ import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Path;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
-
-import org.junit.Before;
-import org.junit.Test;
-
+import org.hibernate.dialect.CockroachDB192Dialect;
+import org.hibernate.dialect.DerbyDialect;
+import org.hibernate.dialect.Oracle12cDialect;
 import org.hibernate.jpa.test.metamodel.AbstractMetamodelSpecificTest;
 import org.hibernate.jpa.test.metamodel.CreditCard;
 import org.hibernate.jpa.test.metamodel.CreditCard_;
 import org.hibernate.jpa.test.metamodel.Customer_;
 import org.hibernate.jpa.test.metamodel.Order;
 import org.hibernate.jpa.test.metamodel.Order_;
-
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
+import org.hibernate.testing.SkipForDialect;
 import org.hibernate.testing.TestForIssue;
+import org.junit.Before;
+import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -211,7 +214,7 @@ public class PredicateTest extends AbstractMetamodelSpecificTest {
 		em.getTransaction().begin();
 		CriteriaQuery<Order> orderCriteria = builder.createQuery( Order.class );
 		Root<Order> orderRoot = orderCriteria.from( Order.class );
-		
+
 		orderCriteria.select( orderRoot );
 		Predicate p = builder.equal( orderRoot.get( "domen" ), new char[]{'r','u'} );
 		orderCriteria.where( p );
@@ -223,15 +226,17 @@ public class PredicateTest extends AbstractMetamodelSpecificTest {
 	}
 
 	/**
-	 * Check predicate for field which has simple char array type (byte[]).
+	 * Check predicate for field which has simple byte array type (byte[]).
 	 */
 	@Test
+	@SkipForDialect(value = Oracle12cDialect.class, jiraKey = "HHH-10603",
+			comment = "Oracle12cDialect uses blob to store byte arrays and it's not possible to compare blobs with simple equality operators.")
 	public void testByteArray() {
 		EntityManager em = getOrCreateEntityManager();
 		em.getTransaction().begin();
 		CriteriaQuery<Order> orderCriteria = builder.createQuery( Order.class );
 		Root<Order> orderRoot = orderCriteria.from( Order.class );
-		
+
 		orderCriteria.select( orderRoot );
 		Predicate p = builder.equal( orderRoot.get( "number" ), new byte[]{'1','2'} );
 		orderCriteria.where( p );
@@ -244,6 +249,7 @@ public class PredicateTest extends AbstractMetamodelSpecificTest {
 
 	@Test
 	@TestForIssue( jiraKey = "HHH-5803" )
+	@SkipForDialect( value = CockroachDB192Dialect.class, comment = "https://github.com/cockroachdb/cockroach/issues/41943")
 	public void testQuotientConversion() {
 		EntityManager em = getOrCreateEntityManager();
 		em.getTransaction().begin();
@@ -288,6 +294,24 @@ public class PredicateTest extends AbstractMetamodelSpecificTest {
 			em.createQuery( criteriaQuery ).getResultList();
 		}
 
+		em.getTransaction().commit();
+		em.close();
+	}
+
+	@Test
+	@TestForIssue( jiraKey = "HHH-8901" )
+	@RequiresDialectFeature( DialectChecks.NotSupportsEmptyInListCheck.class )
+	@SkipForDialect(value = DerbyDialect.class, comment = "Derby doesn't like `x in (null)`")
+	public void testEmptyInPredicate() {
+		EntityManager em = getOrCreateEntityManager();
+		em.getTransaction().begin();
+		CriteriaQuery<Order> orderCriteria = builder.createQuery( Order.class );
+		Root<Order> orderRoot = orderCriteria.from( Order.class );
+		orderCriteria.select( orderRoot );
+		orderCriteria.where( builder.in( orderRoot.get("totalPrice") ) );
+
+		List<Order> orders = em.createQuery( orderCriteria ).getResultList();
+		assertTrue( orders.isEmpty() );
 		em.getTransaction().commit();
 		em.close();
 	}

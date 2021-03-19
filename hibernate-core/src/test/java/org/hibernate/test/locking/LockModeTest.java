@@ -6,13 +6,24 @@
  */
 package org.hibernate.test.locking;
 
+import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
+
+import javax.persistence.LockModeType;
 
 import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
+import org.hibernate.Session;
+import org.hibernate.cfg.AvailableSettings;
+import org.hibernate.cfg.Configuration;
+import org.hibernate.dialect.CockroachDB192Dialect;
 import org.hibernate.dialect.SQLServerDialect;
 import org.hibernate.dialect.SybaseASE15Dialect;
+import org.hibernate.dialect.SybaseDialect;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
 import org.hibernate.testing.SkipForDialect;
 import org.hibernate.testing.TestForIssue;
 import org.hibernate.testing.junit4.BaseCoreFunctionalTestCase;
@@ -21,6 +32,7 @@ import org.hibernate.testing.util.ExceptionUtil;
 import org.junit.Test;
 
 import static org.hibernate.testing.transaction.TransactionUtil.doInHibernate;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
@@ -44,6 +56,12 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 	}
 
 	@Override
+	protected void configure(Configuration configuration) {
+		// We can't use a shared connection provider if we use TransactionUtil.setJdbcTimeout because that is set on the connection level
+		configuration.getProperties().remove( AvailableSettings.CONNECTION_PROVIDER );
+	}
+
+	@Override
 	public void prepareTest() throws Exception {
 		doInHibernate( this::sessionFactory, session -> {
 			id = (Long) session.save( new A( "it" ) );
@@ -53,6 +71,7 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 	protected boolean isCleanupTestDataRequired(){return true;}
 
 	@Test
+	@RequiresDialectFeature( value = DialectChecks.SupportsLockTimeouts.class )
 	@SuppressWarnings( {"deprecation"})
 	public void testLoading() {
 		// open a session, begin a transaction and lock row
@@ -68,6 +87,7 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 	}
 
 	@Test
+	@RequiresDialectFeature( value = DialectChecks.SupportsLockTimeouts.class )
 	public void testLegacyCriteria() {
 		// open a session, begin a transaction and lock row
 		doInHibernate( this::sessionFactory, session -> {
@@ -85,6 +105,7 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 	}
 
 	@Test
+	@RequiresDialectFeature( value = DialectChecks.SupportsLockTimeouts.class )
 	public void testLegacyCriteriaAliasSpecific() {
 		// open a session, begin a transaction and lock row
 		doInHibernate( this::sessionFactory, session -> {
@@ -101,6 +122,7 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 	}
 
 	@Test
+	@RequiresDialectFeature( value = DialectChecks.SupportsLockTimeouts.class )
 	public void testQuery() {
 		// open a session, begin a transaction and lock row
 		doInHibernate( this::sessionFactory, session -> {
@@ -136,7 +158,7 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 			// shouldn't throw an exception
 			session.createQuery( "SELECT a.value FROM A a where a.id = :id" )
 					.setLockMode( "a", LockMode.NONE )
-					.setParameter( "id", 1L )
+					.setParameter( "id", id )
 					.list();
 		} );
 	}
@@ -153,6 +175,76 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 		} );
 	}
 
+	@Test
+	@TestForIssue(jiraKey = "HHH-12257")
+	public void testRefreshLockedEntity() {
+		doInHibernate( this::sessionFactory, session -> {
+			A a = session.get( A.class, id, LockMode.PESSIMISTIC_READ );
+			checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+			session.refresh( a );
+			checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+			session.refresh( A.class.getName(), a );
+			checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+			session.refresh( a, Collections.emptyMap() );
+			checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+			session.refresh( a, null, Collections.emptyMap() );
+			checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+		} );
+	}
+
+	@Test
+	@TestForIssue(jiraKey = "HHH-12257")
+	public void testRefreshWithExplicitLowerLevelLockMode() {
+		doInHibernate( this::sessionFactory, session -> {
+						   A a = session.get( A.class, id, LockMode.PESSIMISTIC_READ );
+						   checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+						   session.refresh( a, LockMode.READ );
+						   checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+						   session.refresh( a, LockModeType.READ );
+						   checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+						   session.refresh( a, LockModeType.READ, Collections.emptyMap() );
+						   checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+					   } );
+	}
+
+
+	@Test
+	@TestForIssue(jiraKey = "HHH-12257")
+	@SkipForDialect( value = CockroachDB192Dialect.class )
+	public void testRefreshWithExplicitHigherLevelLockMode() {
+		doInHibernate( this::sessionFactory, session -> {
+						   A a = session.get( A.class, id );
+						   checkLockMode( a, LockMode.READ, session );
+						   session.refresh( a, LockMode.UPGRADE_NOWAIT );
+						   checkLockMode( a, LockMode.UPGRADE_NOWAIT, session );
+						   session.refresh( a, LockModeType.PESSIMISTIC_READ );
+						   checkLockMode( a, LockMode.PESSIMISTIC_READ, session );
+						   session.refresh( a, LockModeType.PESSIMISTIC_WRITE, Collections.emptyMap() );
+						   checkLockMode( a, LockMode.PESSIMISTIC_WRITE, session );
+					   } );
+	}
+
+
+	@Test
+	@TestForIssue(jiraKey = "HHH-12257")
+	public void testRefreshAfterUpdate() {
+		doInHibernate( this::sessionFactory, session -> {
+			A a = session.get( A.class, id );
+			checkLockMode( a, LockMode.READ, session );
+			a.setValue( "new value" );
+			session.flush();
+			checkLockMode( a, LockMode.WRITE, session );
+			session.refresh( a );
+			checkLockMode( a, LockMode.WRITE, session );
+		} );
+	}
+
+	private void checkLockMode(Object entity, LockMode expectedLockMode, Session session) {
+		final LockMode lockMode =
+				( (SharedSessionContractImplementor) session ).getPersistenceContext().getEntry( entity ).getLockMode();
+		assertEquals( expectedLockMode, lockMode );
+	}
+
 	private void nowAttemptToUpdateRow() {
 		// here we just need to open a new connection (database session and transaction) and make sure that
 		// we are not allowed to acquire exclusive locks to that row and/or write to that row.  That may take
@@ -167,12 +259,19 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 				doInHibernate( this::sessionFactory, _session -> {
 					TransactionUtil.setJdbcTimeout( _session );
 					try {
-						// load with write lock to deal with databases that block (wait indefinitely) direct attempts
-						// to write a locked row
+						// We used to load with write lock here to deal with databases that block (wait indefinitely)
+						// direct attempts to write a locked row.
+						// At some point, due to a bug, the lock mode was lost when applied via lock options, leading
+						// this code to not apply the pessimistic write lock.
+						// See HHH-12847 + https://github.com/hibernate/hibernate-orm/commit/719e5d0c12a6ef709bee907b8b651d27b8b08a6a.
+						// At least Sybase waits indefinitely when really applying a PESSIMISTIC_WRITE lock here (and
+						// the NO_WAIT part is not applied by the Sybase dialect so it doesn't help).
+						// For now going back to LockMode.NONE as it's the lock mode that has been applied for quite
+						// some time and it seems our supported databases don't have a problem with it.
 						A it = _session.get(
 								A.class,
 								id,
-								new LockOptions( LockMode.PESSIMISTIC_WRITE ).setTimeOut( LockOptions.NO_WAIT )
+								new LockOptions( LockMode.NONE ).setTimeOut( LockOptions.NO_WAIT )
 						);
 						_session.createNativeQuery( updateStatement() )
 								.setParameter( "value", "changed" )
@@ -197,7 +296,8 @@ public class LockModeTest extends BaseCoreFunctionalTestCase {
 	}
 
 	protected String updateStatement() {
-		if( SQLServerDialect.class.isAssignableFrom( DIALECT.getClass() ) ) {
+		if ( SQLServerDialect.class.isAssignableFrom( DIALECT.getClass() )
+				|| SybaseDialect.class.isAssignableFrom( DIALECT.getClass() ) ) {
 			return "UPDATE T_LOCK_A WITH(NOWAIT) SET a_value = :value where id = :id";
 		}
 		return "UPDATE T_LOCK_A SET a_value = :value where id = :id";

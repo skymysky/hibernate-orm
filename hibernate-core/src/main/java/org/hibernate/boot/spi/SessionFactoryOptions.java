@@ -6,6 +6,10 @@
  */
 package org.hibernate.boot.spi;
 
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.function.Supplier;
+
 import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.CustomEntityDirtinessStrategy;
 import org.hibernate.EntityMode;
@@ -18,22 +22,21 @@ import org.hibernate.SessionFactoryObserver;
 import org.hibernate.boot.SchemaAutoTooling;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
 import org.hibernate.boot.registry.StandardServiceRegistry;
-import org.hibernate.cache.spi.QueryCacheFactory;
+import org.hibernate.cache.spi.TimestampsCacheFactory;
 import org.hibernate.cfg.BaselineSessionEventsListenerBuilder;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.hibernate.dialect.function.SQLFunction;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
-import org.hibernate.jpa.JpaCompliance;
+import org.hibernate.jpa.spi.JpaCompliance;
 import org.hibernate.loader.BatchFetchStyle;
 import org.hibernate.proxy.EntityNotFoundDelegate;
+import org.hibernate.query.ImmutableEntityUpdateQueryHandlingMode;
 import org.hibernate.query.criteria.LiteralHandlingMode;
 import org.hibernate.resource.jdbc.spi.PhysicalConnectionHandlingMode;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
+import org.hibernate.stat.Statistics;
 import org.hibernate.tuple.entity.EntityTuplizerFactory;
-
-import java.util.Map;
-import java.util.TimeZone;
-import java.util.function.Supplier;
 
 /**
  * Aggregator of special options used to build the SessionFactory.
@@ -41,6 +44,20 @@ import java.util.function.Supplier;
  * @since 5.0
  */
 public interface SessionFactoryOptions {
+	/**
+	 * Get the UUID unique to this SessionFactoryOptions.  Will be the
+	 * same value available as {@link SessionFactoryImplementor#getUuid()}.
+	 *
+	 * @apiNote The value is generated as a {@link java.util.UUID}, but kept
+	 * as a String.
+	 *
+	 * @return The UUID for this SessionFactory.
+	 *
+	 * @see org.hibernate.internal.SessionFactoryRegistry#getSessionFactory
+	 * @see SessionFactoryImplementor#getUuid
+	 */
+	String getUuid();
+
 	/**
 	 * The service registry to use in building the factory.
 	 *
@@ -53,14 +70,12 @@ public interface SessionFactoryOptions {
 	Object getValidatorFactoryReference();
 
 	/**
-	 * @deprecated (since 5.2) In fact added in 5.2 as part of consolidating JPA support
-	 * directly into Hibernate contracts (SessionFactory, Session); intended to provide
-	 * transition help in cases where we need to know the difference in JPA/native use for
-	 * various reasons.
+	 * Was building of the SessionFactory initiated through JPA bootstrapping, or
+	 * through Hibernate's native bootstrapping?
 	 *
-	 * @see SessionFactoryBuilderImplementor#markAsJpaBootstrap
+	 * @return {@code true} indicates the SessionFactory was built through JPA
+	 * bootstrapping; {@code false} indicates it was built through native bootstrapping.
 	 */
-	@Deprecated
 	boolean isJpaBootstrap();
 
 	boolean isJtaTransactionAccessEnabled();
@@ -70,7 +85,7 @@ public interface SessionFactoryOptions {
 	}
 
 	/**
-	 * The name to be used for the SessionFactory.  This is use both in:<ul>
+	 * The name to be used for the SessionFactory.  This is used both in:<ul>
 	 *     <li>in-VM serialization</li>
 	 *     <li>JNDI binding, depending on {@link #isSessionFactoryNameAlsoJndiName}</li>
 	 * </ul>
@@ -147,6 +162,8 @@ public interface SessionFactoryOptions {
 
 	BatchFetchStyle getBatchFetchStyle();
 
+	boolean isDelayBatchFetchLoaderCreationsEnabled();
+
 	int getDefaultBatchFetchSize();
 
 	Integer getMaximumFetchDepth();
@@ -182,7 +199,7 @@ public interface SessionFactoryOptions {
 
 	boolean isQueryCacheEnabled();
 
-	QueryCacheFactory getQueryCacheFactory();
+	TimestampsCacheFactory getTimestampsCacheFactory();
 
 	String getCacheRegionPrefix();
 
@@ -262,4 +279,48 @@ public interface SessionFactoryOptions {
 	JpaCompliance getJpaCompliance();
 
 	boolean isFailOnPaginationOverCollectionFetchEnabled();
+
+	default ImmutableEntityUpdateQueryHandlingMode getImmutableEntityUpdateQueryHandlingMode() {
+		return ImmutableEntityUpdateQueryHandlingMode.WARNING;
+	}
+
+	default boolean inClauseParameterPaddingEnabled() {
+		return false;
+	}
+
+	default boolean nativeExceptionHandling51Compliance() {
+		return false;
+	}
+
+	default int getQueryStatisticsMaxSize() {
+		return Statistics.DEFAULT_QUERY_STATISTICS_MAX_SIZE;
+	}
+
+	/**
+	 * @deprecated Since 5.4.1, this is no longer used.
+	 */
+	@Deprecated
+	default boolean isPostInsertIdentifierDelayableEnabled() {
+		return true;
+	}
+
+	default boolean areJPACallbacksEnabled() {
+		return true;
+	}
+
+	/**
+	 * Can bytecode-enhanced entity classes be used as a "proxy"?
+	 *
+	 * @deprecated (since 5.5) use of enhanced proxies is always enabled
+	 */
+	@Deprecated
+	default boolean isEnhancementAsProxyEnabled() {
+		return true;
+	}
+
+	default boolean isCollectionsInDefaultFetchGroupEnabled() {
+		return false;
+	}
+
+	boolean isOmitJoinOfSuperclassTablesEnabled();
 }

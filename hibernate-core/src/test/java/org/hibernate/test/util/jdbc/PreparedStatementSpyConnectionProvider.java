@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
 import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
@@ -21,6 +23,7 @@ import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 import org.hibernate.testing.jdbc.ConnectionProviderDelegate;
 
 import org.mockito.ArgumentMatchers;
+import org.mockito.MockSettings;
 import org.mockito.Mockito;
 import org.mockito.internal.util.MockUtil;
 
@@ -29,23 +32,45 @@ import org.mockito.internal.util.MockUtil;
  * intercept the underlying {@link PreparedStatement} method calls.
  *
  * @author Vlad Mihalcea
+ * @author Sannne Grinovero
  */
-public class PreparedStatementSpyConnectionProvider
-		extends ConnectionProviderDelegate {
+public class PreparedStatementSpyConnectionProvider extends ConnectionProviderDelegate {
+
+	private static final MockSettings MOCK_SETTINGS = Mockito.withSettings()
+			.stubOnly() //important optimisation: uses far less memory, at tradeoff of mocked methods no longer being verifiable but we often don't need that.
+			.defaultAnswer( org.mockito.Answers.CALLS_REAL_METHODS );
+	private static final MockSettings VERIFIEABLE_MOCK_SETTINGS = Mockito.withSettings()
+			.defaultAnswer( org.mockito.Answers.CALLS_REAL_METHODS );
+	// We must keep around the mocked connections, otherwise they are garbage collected and trigger finalizers
+	// Since we use CALLS_REAL_METHODS this might close underlying IO resources which makes other objects unusable
+	private static final Queue<Object> MOCKS = new LinkedBlockingQueue<>();
 
 	private final Map<PreparedStatement, String> preparedStatementMap = new LinkedHashMap<>();
 
-	private final List<String> executeStatements = new ArrayList<>();
-	private final List<String> executeUpdateStatements = new ArrayList<>();
+	private final List<String> executeStatements = new ArrayList<>( 4 );
+	private final List<String> executeUpdateStatements = new ArrayList<>( 4 );
 
-	private final List<Connection> acquiredConnections = new ArrayList<>( );
-	private final List<Connection> releasedConnections = new ArrayList<>( );
+	private final List<Connection> acquiredConnections = new ArrayList<>( 4 );
+	private final List<Connection> releasedConnections = new ArrayList<>( 4 );
+	private final MockSettings settingsForStatements;
+	private final MockSettings settingsForConnections;
 
+	/**
+	 * @deprecated best use the {@link #PreparedStatementSpyConnectionProvider(boolean,boolean)} method to be explicit about the limitations.
+	 */
+	@Deprecated
 	public PreparedStatementSpyConnectionProvider() {
+		this( false, false );
 	}
 
-	public PreparedStatementSpyConnectionProvider(ConnectionProvider connectionProvider) {
-		super( connectionProvider );
+	/**
+	 * Careful: the default is to use mocks which do not allow to verify invocations, as otherwise the
+	 * memory usage of the testsuite is extremely high.
+	 * When you really need to verify invocations, set the relevant constructor parameter to true.
+	 */
+	public PreparedStatementSpyConnectionProvider(boolean allowMockVerificationOnStatements, boolean allowMockVerificationOnConnections) {
+		this.settingsForStatements = allowMockVerificationOnStatements ? VERIFIEABLE_MOCK_SETTINGS : MOCK_SETTINGS;
+		this.settingsForConnections = allowMockVerificationOnConnections ? VERIFIEABLE_MOCK_SETTINGS : MOCK_SETTINGS;
 	}
 
 	protected Connection actualConnection() throws SQLException {
@@ -54,7 +79,8 @@ public class PreparedStatementSpyConnectionProvider
 
 	@Override
 	public Connection getConnection() throws SQLException {
-		Connection connection = spy( actualConnection() );
+		Connection connection = instrumentConnection( actualConnection() );
+		MOCKS.add( connection );
 		acquiredConnections.add( connection );
 		return connection;
 	}
@@ -63,7 +89,7 @@ public class PreparedStatementSpyConnectionProvider
 	public void closeConnection(Connection conn) throws SQLException {
 		acquiredConnections.remove( conn );
 		releasedConnections.add( conn );
-		super.closeConnection( conn );
+		super.closeConnection( (Connection) MockUtil.getMockSettings( conn ).getSpiedInstance() );
 	}
 
 	@Override
@@ -72,15 +98,15 @@ public class PreparedStatementSpyConnectionProvider
 		super.stop();
 	}
 
-	private Connection spy(Connection connection) {
+	private Connection instrumentConnection(Connection connection) {
 		if ( MockUtil.isMock( connection ) ) {
 			return connection;
 		}
-		Connection connectionSpy = Mockito.spy( connection );
+		Connection connectionSpy = spy( connection, settingsForConnections );
 		try {
 			Mockito.doAnswer( invocation -> {
 				PreparedStatement statement = (PreparedStatement) invocation.callRealMethod();
-				PreparedStatement statementSpy = Mockito.spy( statement );
+				PreparedStatement statementSpy = spy( statement, settingsForStatements );
 				String sql = (String) invocation.getArguments()[0];
 				preparedStatementMap.put( statementSpy, sql );
 				return statementSpy;
@@ -88,7 +114,7 @@ public class PreparedStatementSpyConnectionProvider
 
 			Mockito.doAnswer( invocation -> {
 				Statement statement = (Statement) invocation.callRealMethod();
-				Statement statementSpy = Mockito.spy( statement );
+				Statement statementSpy = spy( statement, settingsForStatements );
 				Mockito.doAnswer( statementInvocation -> {
 					String sql = (String) statementInvocation.getArguments()[0];
 					executeStatements.add( sql );
@@ -106,6 +132,10 @@ public class PreparedStatementSpyConnectionProvider
 			throw new IllegalArgumentException( e );
 		}
 		return connectionSpy;
+	}
+
+	private static <T> T spy(T subject, MockSettings mockSettings) {
+		return Mockito.mock( (Class<T>) subject.getClass(), mockSettings.spiedInstance( subject ) );
 	}
 
 	/**
@@ -133,11 +163,11 @@ public class PreparedStatementSpyConnectionProvider
 		List<PreparedStatement> preparedStatements = getPreparedStatements( sql );
 		if ( preparedStatements.isEmpty() ) {
 			throw new IllegalArgumentException(
-					"There is no PreparedStatement for this SQL statement " + sql );
+					"There is no PreparedStatement for this SQL statement: " + sql );
 		}
 		else if ( preparedStatements.size() > 1 ) {
 			throw new IllegalArgumentException( "There are " + preparedStatements
-					.size() + " PreparedStatements for this SQL statement " + sql );
+					.size() + " PreparedStatements for this SQL statement: " + sql );
 		}
 		return preparedStatements.get( 0 );
 	}

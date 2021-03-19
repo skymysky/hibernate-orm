@@ -20,8 +20,8 @@ import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
 import org.hibernate.QueryException;
 import org.hibernate.Session;
-import org.hibernate.cache.spi.QueryCache;
 import org.hibernate.cache.spi.QueryKey;
+import org.hibernate.cache.spi.QueryResultsCache;
 import org.hibernate.dialect.Dialect;
 import org.hibernate.engine.spi.QueryParameters;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
@@ -52,7 +52,7 @@ import org.hibernate.type.Type;
  */
 public class CustomLoader extends Loader {
 
-	// Currently *not* cachable if autodiscover types is in effect (e.g. "select * ...")
+	// Currently *not* cacheable if auto-discover types are in effect (e.g. "select * ...")
 
 	private final String sql;
 	private final Set<Serializable> querySpaces = new HashSet<>();
@@ -533,7 +533,7 @@ public class CustomLoader extends Loader {
 	 * *after* {@link #list(SharedSessionContractImplementor, QueryParameters)} has already been called.  It's a bit of a
 	 * chicken-and-the-egg issue since {@link #autoDiscoverTypes(ResultSet)} needs the {@link ResultSet}.
 	 * <p/>
-	 * As a hacky workaround, overriden here to provide the {@link #resultTypes}.
+	 * As a hacky workaround, overridden here to provide the {@link #resultTypes}.
 	 *
 	 * see HHH-3051
 	 */
@@ -542,7 +542,7 @@ public class CustomLoader extends Loader {
 			final SharedSessionContractImplementor session,
 			final QueryParameters queryParameters,
 			final Type[] resultTypes,
-			final QueryCache queryCache,
+			final QueryResultsCache queryCache,
 			final QueryKey key,
 			final List result) {
 		super.putResultInQueryCache( session, queryParameters, this.resultTypes, queryCache, key, result );

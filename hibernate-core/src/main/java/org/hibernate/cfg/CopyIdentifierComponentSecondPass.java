@@ -15,6 +15,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.hibernate.AnnotationException;
 import org.hibernate.AssertionFailure;
 import org.hibernate.MappingException;
+import org.hibernate.boot.model.naming.Identifier;
+import org.hibernate.boot.model.naming.ImplicitNamingStrategy;
+import org.hibernate.boot.model.naming.ObjectNameNormalizer;
+import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
+import org.hibernate.boot.model.relational.Database;
 import org.hibernate.boot.spi.MetadataBuildingContext;
 import org.hibernate.mapping.Column;
 import org.hibernate.mapping.Component;
@@ -66,7 +71,7 @@ public class CopyIdentifierComponentSecondPass implements SecondPass {
 
 		//prepare column name structure
 		boolean isExplicitReference = true;
-		Map<String, Ejb3JoinColumn> columnByReferencedName = new HashMap<String, Ejb3JoinColumn>(joinColumns.length);
+		Map<String, Ejb3JoinColumn> columnByReferencedName = new HashMap<>(joinColumns.length);
 		for (Ejb3JoinColumn joinColumn : joinColumns) {
 			final String referencedColumnName = joinColumn.getReferencedColumn();
 			if ( referencedColumnName == null || BinderHelper.isEmptyAnnotationValue( referencedColumnName ) ) {
@@ -79,8 +84,8 @@ public class CopyIdentifierComponentSecondPass implements SecondPass {
 		AtomicInteger index = new AtomicInteger( 0 );
 		if ( columnByReferencedName.isEmpty() ) {
 			isExplicitReference = false;
-			for (Ejb3JoinColumn joinColumn : joinColumns) {
-				columnByReferencedName.put( "" + index.get(), joinColumn );
+			for ( Ejb3JoinColumn joinColumn : joinColumns ) {
+				columnByReferencedName.put( String.valueOf( index.get() ), joinColumn );
 				index.getAndIncrement();
 			}
 			index.set( 0 );
@@ -111,7 +116,7 @@ public class CopyIdentifierComponentSecondPass implements SecondPass {
 		//property.setOptional( property.isOptional() );
 		property.setPersistentClass( component.getOwner() );
 		property.setPropertyAccessorName( referencedProperty.getPropertyAccessorName() );
-		Component value = new Component( buildingContext.getMetadataCollector(), component.getOwner() );
+		Component value = new Component( buildingContext, component.getOwner() );
 
 		property.setValue( value );
 		final Component referencedValue = (Component) referencedProperty.getValue();
@@ -150,7 +155,7 @@ public class CopyIdentifierComponentSecondPass implements SecondPass {
 		//property.setOptional( property.isOptional() );
 		property.setPersistentClass( component.getOwner() );
 		property.setPropertyAccessorName( referencedProperty.getPropertyAccessorName() );
-		SimpleValue value = new SimpleValue( buildingContext.getMetadataCollector(), component.getTable() );
+		SimpleValue value = new SimpleValue( buildingContext, component.getTable() );
 		property.setValue( value );
 		final SimpleValue referencedValue = (SimpleValue) referencedProperty.getValue();
 		value.setTypeName( referencedValue.getTypeName() );
@@ -175,16 +180,12 @@ public class CopyIdentifierComponentSecondPass implements SecondPass {
 				final Ejb3JoinColumn joinColumn;
 				String logicalColumnName = null;
 				if ( isExplicitReference ) {
-					final String columnName = column.getName();
-					logicalColumnName = buildingContext.getMetadataCollector().getLogicalColumnName(
-							referencedPersistentClass.getTable(),
-							columnName
-					);
+					logicalColumnName = column.getName();
 					//JPA 2 requires referencedColumnNames to be case insensitive
 					joinColumn = columnByReferencedName.get( logicalColumnName.toLowerCase(Locale.ROOT ) );
 				}
 				else {
-					joinColumn = columnByReferencedName.get( "" + index.get() );
+					joinColumn = columnByReferencedName.get( String.valueOf( index.get() ) );
 					index.getAndIncrement();
 				}
 				if ( joinColumn == null && ! joinColumns[0].isNameDeferred() ) {
@@ -196,7 +197,12 @@ public class CopyIdentifierComponentSecondPass implements SecondPass {
 				}
 				final String columnName = joinColumn == null || joinColumn.isNameDeferred() ? "tata_" + column.getName() : joinColumn
 						.getName();
-				value.addColumn( new Column( columnName ) );
+
+				final Database database = buildingContext.getMetadataCollector().getDatabase();
+				final PhysicalNamingStrategy physicalNamingStrategy = buildingContext.getBuildingOptions().getPhysicalNamingStrategy();
+				final Identifier explicitName = database.toIdentifier( columnName );
+				final Identifier physicalName =  physicalNamingStrategy.toPhysicalColumnName( explicitName, database.getJdbcEnvironment() );
+				value.addColumn( new Column( physicalName.render( database.getDialect() ) ) );
 				if ( joinColumn != null ) {
 					applyComponentColumnSizeValueToJoinColumn( column, joinColumn );
 					joinColumn.linkWithValue( value );

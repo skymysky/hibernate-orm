@@ -34,7 +34,6 @@ import org.hibernate.hql.spi.QueryTranslatorFactory;
 import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.util.collections.ArrayHelper;
-import org.hibernate.internal.util.collections.EmptyIterator;
 import org.hibernate.internal.util.collections.IdentitySet;
 import org.hibernate.internal.util.collections.JoinedIterator;
 import org.hibernate.query.internal.ParameterMetadataImpl;
@@ -49,11 +48,10 @@ import org.hibernate.type.Type;
 public class HQLQueryPlan implements Serializable {
 	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( HQLQueryPlan.class );
 
-    // TODO : keep separate notions of QT[] here for shallow/non-shallow queries...
+	// TODO : keep separate notions of QT[] here for shallow/non-shallow queries...
 
 	private final String sourceQuery;
 	private final QueryTranslator[] translators;
-	private final String[] sqlStrings;
 
 	private final ParameterMetadataImpl parameterMetadata;
 	private final ReturnMetadata returnMetadata;
@@ -61,12 +59,6 @@ public class HQLQueryPlan implements Serializable {
 
 	private final Set<String> enabledFilterNames;
 	private final boolean shallow;
-	private final SessionFactoryImplementor factory;
-
-	/**
-	* We'll check the trace level only once per instance
-	*/
-	private final boolean traceEnabled = LOG.isTraceEnabled();
 
 	/**
 	 * Constructs a HQLQueryPlan
@@ -80,7 +72,7 @@ public class HQLQueryPlan implements Serializable {
 			SessionFactoryImplementor factory) {
 		this( hql, null, shallow, enabledFilters, factory, null );
 	}
-	
+
 	public HQLQueryPlan(String hql, boolean shallow, Map<String,Filter> enabledFilters,
 			SessionFactoryImplementor factory, EntityGraphQueryHint entityGraphQueryHint) {
 		this( hql, null, shallow, enabledFilters, factory, entityGraphQueryHint );
@@ -96,17 +88,18 @@ public class HQLQueryPlan implements Serializable {
 			EntityGraphQueryHint entityGraphQueryHint) {
 		this.sourceQuery = hql;
 		this.shallow = shallow;
-		this.factory = factory;
 
-		final Set<String> copy = new HashSet<>();
-		copy.addAll( enabledFilters.keySet() );
-		this.enabledFilterNames = java.util.Collections.unmodifiableSet( copy );
+		if ( enabledFilters.isEmpty() ) {
+			this.enabledFilterNames = Collections.emptySet();
+		}
+		else {
+			this.enabledFilterNames = Collections.unmodifiableSet( new HashSet<>( enabledFilters.keySet() ) );
+		}
 
 		final String[] concreteQueryStrings = QuerySplitter.concreteQueries( hql, factory );
 		final int length = concreteQueryStrings.length;
 		this.translators = new QueryTranslator[length];
 
-		final List<String> sqlStringList = new ArrayList<>();
 		final Set<Serializable> combinedQuerySpaces = new HashSet<>();
 
 		final Map querySubstitutions = factory.getSessionFactoryOptions().getQuerySubstitutions();
@@ -125,10 +118,8 @@ public class HQLQueryPlan implements Serializable {
 				( (FilterTranslator) translators[i] ).compile( collectionRole, querySubstitutions, shallow );
 			}
 			combinedQuerySpaces.addAll( translators[i].getQuerySpaces() );
-			sqlStringList.addAll( translators[i].collectSqlStrings() );
 		}
 
-		this.sqlStrings = ArrayHelper.toStringArray( sqlStringList );
 		this.querySpaces = combinedQuerySpaces;
 
 		if ( length == 0 ) {
@@ -167,8 +158,15 @@ public class HQLQueryPlan implements Serializable {
 		return enabledFilterNames;
 	}
 
+	/**
+	 * This method should only be called for debugging purposes as it regenerates a new array every time.
+	 */
 	public String[] getSqlStrings() {
-		return sqlStrings;
+		List<String> sqlStrings = new ArrayList<>();
+		for ( QueryTranslator translator : translators ) {
+			sqlStrings.addAll( translator.collectSqlStrings() );
+		}
+		return ArrayHelper.toStringArray( sqlStrings );
 	}
 
 	public Set getUtilizedFilterNames() {
@@ -194,7 +192,7 @@ public class HQLQueryPlan implements Serializable {
 	public List performList(
 			QueryParameters queryParameters,
 			SharedSessionContractImplementor session) throws HibernateException {
-		if ( traceEnabled ) {
+		if ( LOG.isTraceEnabled() ) {
 			LOG.tracev( "Find: {0}", getSourceQuery() );
 			queryParameters.traceParameters( session.getFactory() );
 		}
@@ -265,7 +263,7 @@ public class HQLQueryPlan implements Serializable {
 
 	/**
 	 * If we're able to guess a likely size of the results we can optimize allocation
-	 * of our datastructures.
+	 * of our data structures.
 	 * Essentially if we detect the user is not using pagination, we attempt to use the FetchSize
 	 * as a reasonable hint. If fetch size is not being set either, it is reasonable to expect
 	 * that we're going to have a single hit. In such a case it would be tempting to return a constant
@@ -276,7 +274,7 @@ public class HQLQueryPlan implements Serializable {
 	 * @return a reasonable size to use for allocation
 	 */
 	@SuppressWarnings("UnnecessaryUnboxing")
-	private int guessResultSize(RowSelection rowSelection) {
+	protected int guessResultSize(RowSelection rowSelection) {
 		if ( rowSelection != null ) {
 			final int maxReasonableAllocation = rowSelection.getFetchSize() != null ? rowSelection.getFetchSize().intValue() : 100;
 			if ( rowSelection.getMaxRows() != null && rowSelection.getMaxRows().intValue() > 0 ) {
@@ -303,12 +301,12 @@ public class HQLQueryPlan implements Serializable {
 	public Iterator performIterate(
 			QueryParameters queryParameters,
 			EventSource session) throws HibernateException {
-		if ( traceEnabled ) {
+		if ( LOG.isTraceEnabled() ) {
 			LOG.tracev( "Iterate: {0}", getSourceQuery() );
 			queryParameters.traceParameters( session.getFactory() );
 		}
 		if ( translators.length == 0 ) {
-			return EmptyIterator.INSTANCE;
+			return Collections.emptyIterator();
 		}
 
 		final boolean many = translators.length > 1;
@@ -341,7 +339,7 @@ public class HQLQueryPlan implements Serializable {
 	public ScrollableResultsImplementor performScroll(
 			QueryParameters queryParameters,
 			SharedSessionContractImplementor session) throws HibernateException {
-		if ( traceEnabled ) {
+		if ( LOG.isTraceEnabled() ) {
 			LOG.tracev( "Iterate: {0}", getSourceQuery() );
 			queryParameters.traceParameters( session.getFactory() );
 		}
@@ -367,7 +365,7 @@ public class HQLQueryPlan implements Serializable {
 	 */
 	public int performExecuteUpdate(QueryParameters queryParameters, SharedSessionContractImplementor session)
 			throws HibernateException {
-		if ( traceEnabled ) {
+		if ( LOG.isTraceEnabled() ) {
 			LOG.tracev( "Execute update: {0}", getSourceQuery() );
 			queryParameters.traceParameters( session.getFactory() );
 		}
@@ -449,5 +447,9 @@ public class HQLQueryPlan implements Serializable {
 
 	public boolean isSelect() {
 		return !translators[0].isManipulationStatement();
+	}
+
+	public boolean isUpdate() {
+		return translators[0].isUpdateStatement();
 	}
 }

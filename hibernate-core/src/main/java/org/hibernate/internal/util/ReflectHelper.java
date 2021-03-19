@@ -39,7 +39,7 @@ import org.hibernate.type.Type;
 public final class ReflectHelper {
 
 	private static final Pattern JAVA_CONSTANT_PATTERN = Pattern.compile(
-			"[a-z\\d]+\\.([A-Z]{1}[a-z\\d]+)+\\$?([A-Z]{1}[a-z\\d]+)*\\.[A-Z_\\$]+", Pattern.UNICODE_CHARACTER_CLASS);
+			"[a-z\\d]+\\.([A-Z]+[a-z\\d]+)+\\$?([A-Z]{1}[a-z\\d]+)*\\.[A-Z_\\$]+", Pattern.UNICODE_CHARACTER_CLASS);
 
 	public static final Class[] NO_PARAM_SIGNATURE = new Class[0];
 	public static final Object[] NO_PARAMS = new Object[0];
@@ -191,7 +191,7 @@ public final class ReflectHelper {
 	 * Is this member publicly accessible.
 	 *
 	 * @param clazz The class which defines the member
-	 * @param member The memeber.
+	 * @param member The member.
 	 * @return True if the member is publicly accessible, false otherwise.
 	 */
 	public static boolean isPublic(Class clazz, Member member) {
@@ -299,7 +299,7 @@ public final class ReflectHelper {
 	 * Determine is the given class is declared final.
 	 *
 	 * @param clazz The class to check.
-	 * @return True if the class is final, flase otherwise.
+	 * @return True if the class is final, false otherwise.
 	 */
 	public static boolean isFinalClass(Class clazz) {
 		return Modifier.isFinal( clazz.getModifiers() );
@@ -347,9 +347,37 @@ public final class ReflectHelper {
 
 	}
 
+	public static <T> Constructor<T> getConstructor(
+			Class<T> clazz,
+			Class... constructorArgs) {
+		Constructor<T> constructor = null;
+		try {
+			constructor = clazz.getDeclaredConstructor( constructorArgs );
+			try {
+				ReflectHelper.ensureAccessibility( constructor );
+			}
+			catch ( SecurityException e ) {
+				constructor = null;
+			}
+		}
+		catch ( NoSuchMethodException ignore ) {
+		}
+
+		return constructor;
+	}
+
 	public static Method getMethod(Class clazz, Method method) {
 		try {
 			return clazz.getMethod( method.getName(), method.getParameterTypes() );
+		}
+		catch (Exception e) {
+			return null;
+		}
+	}
+
+	public static Method getMethod(Class clazz, String methodName, Class... paramTypes) {
+		try {
+			return clazz.getMethod( methodName, paramTypes );
 		}
 		catch (Exception e) {
 			return null;
@@ -396,11 +424,19 @@ public final class ReflectHelper {
 		}
 
 		try {
-			return clazz.getDeclaredField( propertyName );
+			Field field = clazz.getDeclaredField( propertyName );
+			if ( !isStaticField( field ) ) {
+				return field;
+			}
+			return locateField( clazz.getSuperclass(), propertyName );
 		}
 		catch ( NoSuchFieldException nsfe ) {
 			return locateField( clazz.getSuperclass(), propertyName );
 		}
+	}
+
+	private static boolean isStaticField(Field field) {
+		return field != null && ( field.getModifiers() & Modifier.STATIC ) == Modifier.STATIC;
 	}
 
 	public static Method findGetterMethod(Class containerClass, String propertyName) {
@@ -414,13 +450,15 @@ public final class ReflectHelper {
 			}
 
 			getter = getGetterOrNull( checkClass, propertyName );
+
+			// if no getter found yet, check all implemented interfaces
+			if ( getter == null ) {
+				getter = getGetterOrNull( checkClass.getInterfaces(), propertyName );
+			}
+
 			checkClass = checkClass.getSuperclass();
 		}
 
-		// if no getter found yet, check all implemented interfaces
-		if ( getter == null ) {
-			getter = getGetterOrNull( containerClass.getInterfaces(), propertyName );
-		}
 
 		if ( getter == null ) {
 			throw new PropertyNotFoundException(
@@ -565,16 +603,7 @@ public final class ReflectHelper {
 		}
 	}
 
-	public static Method setterMethodOrNull(Class containerJavaType, String propertyName, Class propertyJavaType) {
-		try {
-			return findSetterMethod( containerJavaType, propertyName, propertyJavaType );
-		}
-		catch (PropertyNotFoundException e) {
-			return null;
-		}
-	}
-
-	public static Method findSetterMethod(Class containerClass, String propertyName, Class propertyType) {
+	public static Method setterMethodOrNull(final Class containerClass, final  String propertyName, final Class propertyType) {
 		Class checkClass = containerClass;
 		Method setter = null;
 
@@ -585,20 +614,22 @@ public final class ReflectHelper {
 			}
 
 			setter = setterOrNull( checkClass, propertyName, propertyType );
+
+			// if no setter found yet, check all implemented interfaces
+			if ( setter == null ) {
+				setter = setterOrNull( checkClass.getInterfaces(), propertyName, propertyType );
+			}
+			else {
+				ensureAccessibility( setter );
+			}
+
 			checkClass = checkClass.getSuperclass();
 		}
+		return setter; // might be null
+	}
 
-		// if no setter found yet, check all implemented interfaces
-		if ( setter == null ) {
-			setter = setterOrNull( containerClass.getInterfaces(), propertyName, propertyType );
-//			for ( Class theInterface : containerClass.getInterfaces() ) {
-//				setter = setterOrNull( theInterface, propertyName, propertyType );
-//				if ( setter != null ) {
-//					break;
-//				}
-//			}
-		}
-
+	public static Method findSetterMethod(final Class containerClass, final String propertyName, final Class propertyType) {
+		final Method setter = setterMethodOrNull( containerClass, propertyName, propertyType );
 		if ( setter == null ) {
 			throw new PropertyNotFoundException(
 					String.format(
@@ -609,9 +640,6 @@ public final class ReflectHelper {
 					)
 			);
 		}
-
-		ensureAccessibility( setter );
-
 		return setter;
 	}
 

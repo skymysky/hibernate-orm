@@ -7,21 +7,22 @@
 
 package org.hibernate.spatial;
 
-import com.vividsolutions.jts.geom.Geometry;
-import com.vividsolutions.jts.io.ParseException;
-import com.vividsolutions.jts.io.WKTReader;
-import org.geolatte.geom.jts.JTS;
+import java.util.Locale;
 
 import org.hibernate.type.descriptor.WrapperOptions;
 import org.hibernate.type.descriptor.java.AbstractTypeDescriptor;
 import org.hibernate.type.descriptor.java.JavaTypeDescriptor;
-import org.hibernate.type.descriptor.java.JavaTypeDescriptorRegistry;
+
+import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.io.ParseException;
+import org.locationtech.jts.io.WKTReader;
+import org.geolatte.geom.jts.JTS;
 
 /**
  * Descriptor for JTS {@code Geometry}s.
  *
  * @author Karel Maesen, Geovise BVBA
- *         creation-date: 7/27/11
+ * creation-date: 7/27/11
  */
 public class JTSGeometryJavaTypeDescriptor extends AbstractTypeDescriptor<Geometry> {
 
@@ -35,7 +36,6 @@ public class JTSGeometryJavaTypeDescriptor extends AbstractTypeDescriptor<Geomet
 	 */
 	public JTSGeometryJavaTypeDescriptor() {
 		super( Geometry.class );
-		JavaTypeDescriptorRegistry.INSTANCE.addDescriptor( this );
 	}
 
 	@Override
@@ -49,8 +49,8 @@ public class JTSGeometryJavaTypeDescriptor extends AbstractTypeDescriptor<Geomet
 		try {
 			return reader.read( string );
 		}
-		catch ( ParseException e ) {
-			throw new RuntimeException( String.format( "Can't parse string %s as WKT", string ) );
+		catch (ParseException e) {
+			throw new RuntimeException( String.format( Locale.ENGLISH, "Can't parse string %s as WKT", string ) );
 		}
 	}
 

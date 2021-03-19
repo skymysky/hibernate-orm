@@ -18,8 +18,11 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 
 import org.hibernate.cfg.AvailableSettings;
-import org.hibernate.dialect.MariaDBDialect;
+import org.hibernate.dialect.MySQL5Dialect;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
 import org.hibernate.testing.SkipForDialect;
 import org.hibernate.testing.junit4.BaseNonConfigCoreFunctionalTestCase;
 import org.hibernate.test.util.jdbc.PreparedStatementSpyConnectionProvider;
@@ -38,11 +41,12 @@ import static org.mockito.Mockito.verify;
 /**
  * @author Vlad Mihalcea
  */
-@SkipForDialect(MariaDBDialect.class)
+@SkipForDialect(MySQL5Dialect.class)
+@RequiresDialectFeature(DialectChecks.SupportsJdbcDriverProxying.class)
 public class JdbcTimestampCustomSessionLevelTimeZoneTest
 		extends BaseNonConfigCoreFunctionalTestCase {
 
-	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider();
+	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider( true, false );
 
 	private static final TimeZone TIME_ZONE = TimeZone.getTimeZone(
 			"America/Los_Angeles" );
@@ -56,6 +60,7 @@ public class JdbcTimestampCustomSessionLevelTimeZoneTest
 
 	@Override
 	protected void addSettings(Map settings) {
+		connectionProvider.setConnectionProvider( (ConnectionProvider) settings.get( AvailableSettings.CONNECTION_PROVIDER ) );
 		settings.put(
 				AvailableSettings.CONNECTION_PROVIDER,
 				connectionProvider

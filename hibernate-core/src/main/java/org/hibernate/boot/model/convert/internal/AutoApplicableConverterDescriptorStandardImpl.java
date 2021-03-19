@@ -20,6 +20,7 @@ import org.hibernate.boot.model.convert.spi.AutoApplicableConverterDescriptor;
 import org.hibernate.boot.model.convert.spi.ConverterDescriptor;
 import org.hibernate.boot.spi.MetadataBuildingContext;
 import org.hibernate.cfg.annotations.HCANNHelper;
+import org.hibernate.internal.util.type.PrimitiveWrapperHelper;
 
 import com.fasterxml.classmate.ResolvedType;
 import com.fasterxml.classmate.ResolvedTypeWithMembers;
@@ -97,8 +98,8 @@ public class AutoApplicableConverterDescriptorStandardImpl implements AutoApplic
 	}
 
 	private ResolvedMember resolveMember(XProperty xProperty, MetadataBuildingContext buildingContext) {
-		final ClassmateContext classmateContext = buildingContext.getMetadataCollector().getClassmateContext();
-		final ReflectionManager reflectionManager = buildingContext.getBuildingOptions().getReflectionManager();
+		final ClassmateContext classmateContext = buildingContext.getBootstrapContext().getClassmateContext();
+		final ReflectionManager reflectionManager = buildingContext.getBootstrapContext().getReflectionManager();
 
 		final ResolvedType declaringClassType = classmateContext.getTypeResolver().resolve(
 				reflectionManager.toClass( xProperty.getDeclaringClass() )
@@ -147,7 +148,11 @@ public class AutoApplicableConverterDescriptorStandardImpl implements AutoApplic
 	}
 
 	private boolean typesMatch(ResolvedType converterDefinedType, ResolvedType checkType) {
-		if ( !converterDefinedType.getErasedType().isAssignableFrom( checkType.getErasedType() ) ) {
+		Class<?> erasedCheckType = checkType.getErasedType();
+		if ( erasedCheckType.isPrimitive() ) {
+			erasedCheckType = PrimitiveWrapperHelper.getDescriptorByPrimitiveType( erasedCheckType ).getWrapperClass();
+		}
+		if ( !converterDefinedType.getErasedType().isAssignableFrom( erasedCheckType ) ) {
 			return false;
 		}
 
@@ -180,4 +185,5 @@ public class AutoApplicableConverterDescriptorStandardImpl implements AutoApplic
 
 		return true;
 	}
+
 }

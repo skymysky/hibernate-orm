@@ -71,11 +71,7 @@ public abstract class AbstractStandardBasicType<T>
 	}
 
 	protected T getReplacement(T original, T target, SharedSessionContractImplementor session) {
-		if ( original == LazyPropertyInitializer.UNFETCHED_PROPERTY ) {
-			return target;
-		}
-		else if ( !isMutable() ||
-					( target != LazyPropertyInitializer.UNFETCHED_PROPERTY && isEqual( original, target ) ) ) {
+		if ( !isMutable() || ( target != null && isEqual( original, target ) ) ) {
 			return original;
 		}
 		else {
@@ -91,7 +87,7 @@ public abstract class AbstractStandardBasicType<T>
 	@Override
 	public String[] getRegistrationKeys() {
 		return registerUnderJavaType()
-				? new String[] { getName(), javaTypeDescriptor.getJavaTypeClass().getName() }
+				? new String[] { getName(), javaTypeDescriptor.getJavaType().getName() }
 				: new String[] { getName() };
 	}
 
@@ -106,13 +102,13 @@ public abstract class AbstractStandardBasicType<T>
 	protected Size getDictatedSize() {
 		return dictatedSize;
 	}
-	
+
 	// final implementations ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	public final JavaTypeDescriptor<T> getJavaTypeDescriptor() {
 		return javaTypeDescriptor;
 	}
-	
+
 	public final void setJavaTypeDescriptor( JavaTypeDescriptor<T> javaTypeDescriptor ) {
 		this.javaTypeDescriptor = javaTypeDescriptor;
 	}
@@ -128,7 +124,7 @@ public abstract class AbstractStandardBasicType<T>
 
 	@Override
 	public final Class getReturnedClass() {
-		return javaTypeDescriptor.getJavaTypeClass();
+		return javaTypeDescriptor.getJavaType();
 	}
 
 	@Override
@@ -351,6 +347,10 @@ public abstract class AbstractStandardBasicType<T>
 	@Override
 	@SuppressWarnings({ "unchecked" })
 	public final Object replace(Object original, Object target, SharedSessionContractImplementor session, Object owner, Map copyCache) {
+		if ( original == null && target == null ) {
+			return null;
+		}
+
 		return getReplacement( (T) original, (T) target, session );
 	}
 

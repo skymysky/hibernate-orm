@@ -12,7 +12,7 @@ import org.hibernate.action.spi.AfterTransactionCompletionProcess;
 import org.hibernate.action.spi.BeforeTransactionCompletionProcess;
 import org.hibernate.action.spi.Executable;
 import org.hibernate.cache.CacheException;
-import org.hibernate.cache.spi.access.CollectionRegionAccessStrategy;
+import org.hibernate.cache.spi.access.CollectionDataAccess;
 import org.hibernate.cache.spi.access.SoftLock;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.spi.SharedSessionContractImplementor;
@@ -20,6 +20,7 @@ import org.hibernate.event.service.spi.EventListenerGroup;
 import org.hibernate.event.service.spi.EventListenerRegistry;
 import org.hibernate.event.spi.EventSource;
 import org.hibernate.event.spi.EventType;
+import org.hibernate.internal.FastSessionServices;
 import org.hibernate.internal.util.StringHelper;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.pretty.MessageHelper;
@@ -76,7 +77,7 @@ public abstract class CollectionAction implements Executable, Serializable, Comp
 		// bidirectional association and it is one of the earlier entity actions which actually updates
 		// the database (this action is responsible for second-level cache invalidation only)
 		if ( persister.hasCache() ) {
-			final CollectionRegionAccessStrategy cache = persister.getCacheAccessStrategy();
+			final CollectionDataAccess cache = persister.getCacheAccessStrategy();
 			final Object ck = cache.generateCacheKey(
 					key,
 					persister,
@@ -114,7 +115,7 @@ public abstract class CollectionAction implements Executable, Serializable, Comp
 		Serializable finalKey = key;
 		if ( key instanceof DelayedPostInsertIdentifier ) {
 			// need to look it up from the persistence-context
-			finalKey = session.getPersistenceContext().getEntry( collection.getOwner() ).getId();
+			finalKey = session.getPersistenceContextInternal().getEntry( collection.getOwner() ).getId();
 			if ( finalKey == key ) {
 				// we may be screwed here since the collection action is about to execute
 				// and we do not know the final owner key value
@@ -129,7 +130,7 @@ public abstract class CollectionAction implements Executable, Serializable, Comp
 
 	protected final void evict() throws CacheException {
 		if ( persister.hasCache() ) {
-			final CollectionRegionAccessStrategy cache = persister.getCacheAccessStrategy();
+			final CollectionDataAccess cache = persister.getCacheAccessStrategy();
 			final Object ck = cache.generateCacheKey(
 					key, 
 					persister,
@@ -173,7 +174,7 @@ public abstract class CollectionAction implements Executable, Serializable, Comp
 
 		@Override
 		public void doAfterTransactionCompletion(boolean success, SharedSessionContractImplementor session) {
-			final CollectionRegionAccessStrategy cache = persister.getCacheAccessStrategy();
+			final CollectionDataAccess cache = persister.getCacheAccessStrategy();
 			final Object ck = cache.generateCacheKey(
 					key,
 					persister,
@@ -184,6 +185,11 @@ public abstract class CollectionAction implements Executable, Serializable, Comp
 		}
 	}
 
+	/**
+	 * @deprecated This will be removed as it's not very efficient. If you need access to EventListenerGroup(s),
+	 * use the direct references from {@link #getFastSessionServices()}.
+	 */
+	@Deprecated
 	protected <T> EventListenerGroup<T> listenerGroup(EventType<T> eventType) {
 		return getSession()
 				.getFactory()
@@ -195,4 +201,13 @@ public abstract class CollectionAction implements Executable, Serializable, Comp
 	protected EventSource eventSource() {
 		return (EventSource) getSession();
 	}
+
+	/**
+	 * Convenience method for all subclasses.
+	 * @return the {@link FastSessionServices} instance from the SessionFactory.
+	 */
+	protected FastSessionServices getFastSessionServices() {
+		return session.getFactory().getFastSessionServices();
+	}
+
 }

@@ -19,7 +19,7 @@ import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.transaction.jta.platform.spi.JtaPlatform;
 import org.hibernate.engine.transaction.spi.IsolationDelegate;
 import org.hibernate.engine.transaction.spi.TransactionObserver;
-import org.hibernate.jpa.JpaCompliance;
+import org.hibernate.jpa.spi.JpaCompliance;
 import org.hibernate.resource.jdbc.spi.JdbcSessionContext;
 import org.hibernate.resource.jdbc.spi.JdbcSessionOwner;
 import org.hibernate.resource.transaction.TransactionRequiredForJoinException;
@@ -62,7 +62,7 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 
 	private int timeOut = -1;
 
-	private final transient List<TransactionObserver> observers;
+	private transient List<TransactionObserver> observers = null;
 
 	/**
 	 * Construct a JtaTransactionCoordinatorImpl instance.  package-protected to ensure access goes through
@@ -78,8 +78,6 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 		this.transactionCoordinatorBuilder = transactionCoordinatorBuilder;
 		this.transactionCoordinatorOwner = owner;
 		this.autoJoinTransactions = autoJoinTransactions;
-
-		this.observers = new ArrayList<>();
 
 		final JdbcSessionContext jdbcSessionContext = owner.getJdbcSessionOwner().getJdbcSessionContext();
 
@@ -109,26 +107,30 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 		this.preferUserTransactions = preferUserTransactions;
 		this.performJtaThreadTracking = performJtaThreadTracking;
 
-		this.observers = new ArrayList<>();
-
 		if ( observers != null ) {
+			this.observers = new ArrayList<>( observers.length );
 			Collections.addAll( this.observers, observers );
 		}
 
 		synchronizationRegistered = false;
 
 		pulse();
-
 	}
 
 	/**
 	 * Needed because while iterating the observers list and executing the before/update callbacks,
 	 * some observers might get removed from the list.
+	 * Yet try to not allocate anything for when the list is empty, as this is a common case.
 	 *
 	 * @return TransactionObserver
 	 */
 	private Iterable<TransactionObserver> observers() {
-		return new ArrayList<>( observers );
+		if ( this.observers == null ) {
+			return Collections.EMPTY_LIST;
+		}
+		else {
+			return new ArrayList<>( this.observers );
+		}
 	}
 
 	public SynchronizationCallbackCoordinator getSynchronizationCallbackCoordinator() {
@@ -150,9 +152,9 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 			return;
 		}
 
-		// Can we resister a synchronization according to the JtaPlatform?
+		// Can we register a synchronization according to the JtaPlatform?
 		if ( !jtaPlatform.canRegisterSynchronization() ) {
-			log.trace( "JTA platform says we cannot currently resister synchronization; skipping" );
+			log.trace( "JTA platform says we cannot currently register synchronization; skipping" );
 			return;
 		}
 
@@ -172,6 +174,9 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 		getSynchronizationCallbackCoordinator().synchronizationRegistered();
 		synchronizationRegistered = true;
 		log.debug( "Hibernate RegisteredSynchronization successfully registered with JTA platform" );
+
+		// report entering into a "transactional context"
+		getTransactionCoordinatorOwner().startTransactionBoundary();
 	}
 
 	@Override
@@ -334,6 +339,14 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 		return this.timeOut;
 	}
 
+	@Override
+	public void invalidate() {
+		if ( physicalTransactionDelegate != null ) {
+			physicalTransactionDelegate.invalidate();
+		}
+		physicalTransactionDelegate = null;
+	}
+
 	// SynchronizationCallbackTarget ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	@Override
@@ -374,23 +387,22 @@ public class JtaTransactionCoordinatorImpl implements TransactionCoordinator, Sy
 			observer.afterCompletion( successful, delayed );
 		}
 
-		if ( physicalTransactionDelegate != null ) {
-			physicalTransactionDelegate.invalidate();
-		}
-
-		physicalTransactionDelegate = null;
 		synchronizationRegistered = false;
 	}
 
 	public void addObserver(TransactionObserver observer) {
+		if ( this.observers == null ) {
+			this.observers = new ArrayList<>( 3 ); //These lists are typically very small.
+		}
 		observers.add( observer );
 	}
 
 	@Override
 	public void removeObserver(TransactionObserver observer) {
-		observers.remove( observer );
+		if ( observers != null ) {
+			observers.remove( observer );
+		}
 	}
-
 
 	/**
 	 * Implementation of the LocalInflow for this TransactionCoordinator.  Allows the

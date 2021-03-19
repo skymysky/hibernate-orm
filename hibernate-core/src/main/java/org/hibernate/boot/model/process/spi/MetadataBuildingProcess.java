@@ -12,7 +12,6 @@ import java.util.Set;
 
 import org.hibernate.boot.AttributeConverterInfo;
 import org.hibernate.boot.MetadataSources;
-import org.hibernate.boot.internal.ClassLoaderAccessImpl;
 import org.hibernate.boot.internal.InFlightMetadataCollectorImpl;
 import org.hibernate.boot.internal.MetadataBuildingContextRootImpl;
 import org.hibernate.boot.jaxb.internal.MappingBinder;
@@ -29,19 +28,21 @@ import org.hibernate.boot.model.source.internal.hbm.ModelBinder;
 import org.hibernate.boot.model.source.spi.MetadataSourceProcessor;
 import org.hibernate.boot.registry.classloading.spi.ClassLoaderService;
 import org.hibernate.boot.spi.AdditionalJaxbMappingProducer;
-import org.hibernate.boot.spi.BasicTypeRegistration;
-import org.hibernate.boot.spi.ClassLoaderAccess;
+import org.hibernate.boot.spi.BootstrapContext;
 import org.hibernate.boot.spi.MetadataBuildingOptions;
 import org.hibernate.boot.spi.MetadataContributor;
 import org.hibernate.boot.spi.MetadataImplementor;
-import org.hibernate.cfg.AttributeConverterDefinition;
+import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.cfg.MetadataSourceType;
 import org.hibernate.dialect.Dialect;
+import org.hibernate.engine.config.spi.ConfigurationService;
+import org.hibernate.engine.config.spi.StandardConverters;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.type.BasicType;
 import org.hibernate.type.BasicTypeRegistry;
-import org.hibernate.type.TypeFactory;
-import org.hibernate.type.TypeResolver;
+import org.hibernate.type.descriptor.java.JavaTypeDescriptor;
+import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
+import org.hibernate.type.spi.TypeConfiguration;
 import org.hibernate.usertype.CompositeUserType;
 import org.hibernate.usertype.UserType;
 
@@ -80,23 +81,34 @@ public class MetadataBuildingProcess {
 	 */
 	public static MetadataImplementor build(
 			final MetadataSources sources,
+			final BootstrapContext bootstrapContext,
 			final MetadataBuildingOptions options) {
-		return complete( prepare( sources, options ), options );
+		return complete( prepare( sources, bootstrapContext ), bootstrapContext, options );
 	}
 
 	/**
 	 * First step of 2-phase for MetadataSources->Metadata process
 	 *
 	 * @param sources The MetadataSources
-	 * @param options The building options
+	 * @param bootstrapContext The bootstrapContext
 	 *
 	 * @return Token/memento representing all known users resources (classes, packages, mapping files, etc).
 	 */
 	public static ManagedResources prepare(
 			final MetadataSources sources,
-			final MetadataBuildingOptions options) {
-		final ManagedResourcesImpl managedResources = ManagedResourcesImpl.baseline( sources, options );
-		ScanningCoordinator.INSTANCE.coordinateScan( managedResources, options, sources.getXmlMappingBinderAccess() );
+			final BootstrapContext bootstrapContext) {
+		final ManagedResourcesImpl managedResources = ManagedResourcesImpl.baseline( sources, bootstrapContext );
+		final ConfigurationService configService = bootstrapContext.getServiceRegistry().getService( ConfigurationService.class );
+		final boolean xmlMappingEnabled = configService.getSetting(
+				AvailableSettings.XML_MAPPING_ENABLED,
+				StandardConverters.BOOLEAN,
+				true
+		);
+		ScanningCoordinator.INSTANCE.coordinateScan(
+				managedResources,
+				bootstrapContext,
+				xmlMappingEnabled ? sources.getXmlMappingBinderAccess() : null
+		);
 		return managedResources;
 	}
 
@@ -108,24 +120,22 @@ public class MetadataBuildingProcess {
 	 *
 	 * @return Token/memento representing all known users resources (classes, packages, mapping files, etc).
 	 */
-	public static MetadataImplementor complete(final ManagedResources managedResources, final MetadataBuildingOptions options) {
-		final BasicTypeRegistry basicTypeRegistry = handleTypes( options );
-
+	public static MetadataImplementor complete(
+			final ManagedResources managedResources,
+			final BootstrapContext bootstrapContext,
+			final MetadataBuildingOptions options) {
 		final InFlightMetadataCollectorImpl metadataCollector = new InFlightMetadataCollectorImpl(
-				options,
-				new TypeResolver( basicTypeRegistry, new TypeFactory() )
+				bootstrapContext,
+				options
 		);
+
+		handleTypes( bootstrapContext, options );
 
 		final ClassLoaderService classLoaderService = options.getServiceRegistry().getService( ClassLoaderService.class );
 
-		final ClassLoaderAccess classLoaderAccess = new ClassLoaderAccessImpl(
-				options.getTempClassLoader(),
-				classLoaderService
-		);
-
 		final MetadataBuildingContextRootImpl rootMetadataBuildingContext = new MetadataBuildingContextRootImpl(
+				bootstrapContext,
 				options,
-				classLoaderAccess,
 				metadataCollector
 		);
 
@@ -135,7 +145,10 @@ public class MetadataBuildingProcess {
 			);
 		}
 
-		final IndexView jandexView = options.getJandexView();
+		bootstrapContext.getTypeConfiguration().scope( rootMetadataBuildingContext );
+
+
+		final IndexView jandexView = bootstrapContext.getJandexView();
 
 		// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		// Set up the processors and start binding
@@ -143,10 +156,10 @@ public class MetadataBuildingProcess {
 		// 		to unified model
 
 		final MetadataSourceProcessor processor = new MetadataSourceProcessor() {
-			private final HbmMetadataSourceProcessorImpl hbmProcessor = new HbmMetadataSourceProcessorImpl(
-					managedResources,
-					rootMetadataBuildingContext
-			);
+			private final MetadataSourceProcessor hbmProcessor =
+						options.isXmlMappingEnabled()
+							? new HbmMetadataSourceProcessorImpl( managedResources, rootMetadataBuildingContext )
+							: new NoOpMetadataSourceProcessorImpl();
 
 			private final AnnotationMetadataSourceProcessorImpl annotationProcessor = new AnnotationMetadataSourceProcessorImpl(
 					managedResources,
@@ -264,7 +277,7 @@ public class MetadataBuildingProcess {
 		processor.processFilterDefinitions();
 		processor.processFetchProfiles();
 
-		final Set<String> processedEntityNames = new HashSet<String>();
+		final Set<String> processedEntityNames = new HashSet<>();
 		processor.prepareForEntityHierarchyProcessing();
 		processor.processEntityHierarchies( processedEntityNames );
 		processor.postProcessEntityHierarchies();
@@ -281,34 +294,37 @@ public class MetadataBuildingProcess {
 
 		metadataCollector.processSecondPasses( rootMetadataBuildingContext );
 
-		Iterable<AdditionalJaxbMappingProducer> producers = classLoaderService.loadJavaServices( AdditionalJaxbMappingProducer.class );
-		if ( producers != null ) {
-			final EntityHierarchyBuilder hierarchyBuilder = new EntityHierarchyBuilder();
-//			final MappingBinder mappingBinder = new MappingBinder( true );
-			// We need to disable validation here.  It seems Envers is not producing valid (according to schema) XML
-			final MappingBinder mappingBinder = new MappingBinder( classLoaderService, false );
-			for ( AdditionalJaxbMappingProducer producer : producers ) {
-				log.tracef( "Calling AdditionalJaxbMappingProducer : %s", producer );
-				Collection<MappingDocument> additionalMappings = producer.produceAdditionalMappings(
-						metadataCollector,
-						jandexView,
-						mappingBinder,
-						rootMetadataBuildingContext
-				);
-				for ( MappingDocument mappingDocument : additionalMappings ) {
-					hierarchyBuilder.indexMappingDocument( mappingDocument );
+		if ( options.isXmlMappingEnabled() ) {
+			Iterable<AdditionalJaxbMappingProducer> producers = classLoaderService.loadJavaServices( AdditionalJaxbMappingProducer.class );
+			if ( producers != null ) {
+				final EntityHierarchyBuilder hierarchyBuilder = new EntityHierarchyBuilder();
+				// final MappingBinder mappingBinder = new MappingBinder( true );
+				// We need to disable validation here.  It seems Envers is not producing valid (according to schema) XML
+				final MappingBinder mappingBinder = new MappingBinder( classLoaderService, false );
+				for ( AdditionalJaxbMappingProducer producer : producers ) {
+					log.tracef( "Calling AdditionalJaxbMappingProducer : %s", producer );
+					Collection<MappingDocument> additionalMappings = producer.produceAdditionalMappings(
+							metadataCollector,
+							jandexView,
+							mappingBinder,
+							rootMetadataBuildingContext
+					);
+					for ( MappingDocument mappingDocument : additionalMappings ) {
+						hierarchyBuilder.indexMappingDocument( mappingDocument );
+					}
 				}
-			}
 
-			ModelBinder binder = ModelBinder.prepare( rootMetadataBuildingContext );
-			for ( EntityHierarchySourceImpl entityHierarchySource : hierarchyBuilder.buildHierarchies() ) {
-				binder.bindEntityHierarchy( entityHierarchySource );
+				ModelBinder binder = ModelBinder.prepare( rootMetadataBuildingContext );
+				for ( EntityHierarchySourceImpl entityHierarchySource : hierarchyBuilder.buildHierarchies() ) {
+					binder.bindEntityHierarchy( entityHierarchySource );
+				}
 			}
 		}
 
 		return metadataCollector.buildMetadataInstance( rootMetadataBuildingContext );
 	}
 
+//	todo (7.0) : buildJandexInitializer
 //	private static JandexInitManager buildJandexInitializer(
 //			MetadataBuildingOptions options,
 //			ClassLoaderAccess classLoaderAccess) {
@@ -321,35 +337,49 @@ public class MetadataBuildingProcess {
 //		return new JandexInitManager( options.getJandexView(), classLoaderAccess, autoIndexMembers );
 //	}
 
-
-
-
-	private static BasicTypeRegistry handleTypes(MetadataBuildingOptions options) {
+	private static void handleTypes(BootstrapContext bootstrapContext, MetadataBuildingOptions options) {
 		final ClassLoaderService classLoaderService = options.getServiceRegistry().getService( ClassLoaderService.class );
-
-		// ultimately this needs to change a little bit to account for HHH-7792
-		final BasicTypeRegistry basicTypeRegistry = new BasicTypeRegistry();
 
 		final TypeContributions typeContributions = new TypeContributions() {
 			@Override
 			public void contributeType(org.hibernate.type.BasicType type) {
-				basicTypeRegistry.register( type );
+				getBasicTypeRegistry().register( type );
 			}
 
 			@Override
 			public void contributeType(BasicType type, String... keys) {
-				basicTypeRegistry.register( type, keys );
+				getBasicTypeRegistry().register( type, keys );
 			}
 
 			@Override
 			public void contributeType(UserType type, String[] keys) {
-				basicTypeRegistry.register( type, keys );
+				getBasicTypeRegistry().register( type, keys );
 			}
 
 			@Override
 			public void contributeType(CompositeUserType type, String[] keys) {
-				basicTypeRegistry.register( type, keys );
+				getBasicTypeRegistry().register( type, keys );
 			}
+
+			@Override
+			public void contributeJavaTypeDescriptor(JavaTypeDescriptor descriptor) {
+				bootstrapContext.getTypeConfiguration().getJavaTypeDescriptorRegistry().addDescriptor( descriptor );
+			}
+
+			@Override
+			public void contributeSqlTypeDescriptor(SqlTypeDescriptor descriptor) {
+				bootstrapContext.getTypeConfiguration().getSqlTypeDescriptorRegistry().addDescriptor( descriptor );
+			}
+
+			@Override
+			public TypeConfiguration getTypeConfiguration() {
+				return bootstrapContext.getTypeConfiguration();
+			}
+
+			final BasicTypeRegistry getBasicTypeRegistry() {
+				return bootstrapContext.getTypeConfiguration().getBasicTypeRegistry();
+			}
+
 		};
 
 		// add Dialect contributed types
@@ -362,14 +392,7 @@ public class MetadataBuildingProcess {
 		}
 
 		// add explicit application registered types
-		for ( BasicTypeRegistration basicTypeRegistration : options.getBasicTypeRegistrations() ) {
-			basicTypeRegistry.register(
-					basicTypeRegistration.getBasicType(),
-					basicTypeRegistration.getRegistrationKeys()
-			);
-		}
-
-		return basicTypeRegistry;
+		bootstrapContext.getTypeConfiguration()
+				.addBasicTypeRegistrationContributions( options.getBasicTypeRegistrations() );
 	}
-
 }

@@ -6,13 +6,16 @@
  */
 package org.hibernate.spatial.dialect.mysql;
 
+import java.util.Locale;
 import java.util.Map;
 
 import org.hibernate.boot.model.TypeContributions;
 import org.hibernate.dialect.MySQLDialect;
 import org.hibernate.dialect.function.SQLFunction;
 import org.hibernate.service.ServiceRegistry;
+import org.hibernate.spatial.GeolatteGeometryJavaTypeDescriptor;
 import org.hibernate.spatial.GeolatteGeometryType;
+import org.hibernate.spatial.JTSGeometryJavaTypeDescriptor;
 import org.hibernate.spatial.JTSGeometryType;
 import org.hibernate.spatial.SpatialDialect;
 import org.hibernate.spatial.SpatialFunction;
@@ -34,7 +37,7 @@ public class MySQLSpatialDialect extends MySQLDialect implements SpatialDialect 
 				MySQLGeometryTypeDescriptor.INSTANCE.getSqlType(),
 				"GEOMETRY"
 		);
-		for ( Map.Entry<String, SQLFunction> entry : new MySQLSpatialFunctions() ) {
+		for ( Map.Entry<String, SQLFunction> entry : new MySQL5SpatialFunctions() ) {
 			registerFunction( entry.getKey(), entry.getValue() );
 		}
 	}
@@ -47,6 +50,9 @@ public class MySQLSpatialDialect extends MySQLDialect implements SpatialDialect 
 		);
 		typeContributions.contributeType( new GeolatteGeometryType( MySQLGeometryTypeDescriptor.INSTANCE ) );
 		typeContributions.contributeType( new JTSGeometryType( MySQLGeometryTypeDescriptor.INSTANCE ) );
+
+		typeContributions.contributeJavaTypeDescriptor( GeolatteGeometryJavaTypeDescriptor.INSTANCE );
+		typeContributions.contributeJavaTypeDescriptor( JTSGeometryJavaTypeDescriptor.INSTANCE );
 	}
 
 	@Override
@@ -88,7 +94,10 @@ public class MySQLSpatialDialect extends MySQLDialect implements SpatialDialect 
 
 	@Override
 	public String getDWithinSQL(String columnName) {
-		throw new UnsupportedOperationException( String.format( "Mysql doesn't support the Dwithin function" ) );
+		throw new UnsupportedOperationException( String.format(
+				Locale.ENGLISH,
+				"Mysql doesn't support the Dwithin function"
+		) );
 	}
 
 	@Override

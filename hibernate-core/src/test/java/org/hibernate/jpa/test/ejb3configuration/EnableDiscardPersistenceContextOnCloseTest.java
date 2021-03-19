@@ -9,10 +9,15 @@ package org.hibernate.jpa.test.ejb3configuration;
 import java.util.Map;
 import javax.persistence.EntityManager;
 
+import org.hibernate.dialect.DB2Dialect;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 import org.hibernate.jpa.AvailableSettings;
 import org.hibernate.jpa.test.BaseEntityManagerFunctionalTestCase;
 import org.hibernate.jpa.test.Wallet;
 
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
+import org.hibernate.testing.SkipForDialect;
 import org.hibernate.test.util.jdbc.PreparedStatementSpyConnectionProvider;
 import org.junit.Test;
 
@@ -23,13 +28,15 @@ import static org.junit.Assert.fail;
 /**
  * @author Vlad Mihalcea
  */
+@RequiresDialectFeature(DialectChecks.SupportsJdbcDriverProxying.class)
 public class EnableDiscardPersistenceContextOnCloseTest extends BaseEntityManagerFunctionalTestCase {
 
-	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider();
+	private PreparedStatementSpyConnectionProvider connectionProvider = new PreparedStatementSpyConnectionProvider( false, false );
 
 	@Override
 	protected Map getConfig() {
 		Map config = super.getConfig();
+		connectionProvider.setConnectionProvider( (ConnectionProvider) config.get( org.hibernate.cfg.AvailableSettings.CONNECTION_PROVIDER ) );
 		config.put( AvailableSettings.DISCARD_PC_ON_CLOSE, "true");
 		config.put(
 				org.hibernate.cfg.AvailableSettings.CONNECTION_PROVIDER,

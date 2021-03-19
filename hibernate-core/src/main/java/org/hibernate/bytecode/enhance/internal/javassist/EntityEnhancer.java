@@ -17,7 +17,6 @@ import javassist.CannotCompileException;
 import javassist.CtClass;
 import javassist.CtField;
 import javassist.Modifier;
-
 import javassist.NotFoundException;
 
 import org.hibernate.bytecode.enhance.internal.tracker.DirtyTracker;
@@ -25,7 +24,6 @@ import org.hibernate.bytecode.enhance.internal.tracker.NoopCollectionTracker;
 import org.hibernate.bytecode.enhance.internal.tracker.SimpleCollectionTracker;
 import org.hibernate.bytecode.enhance.internal.tracker.SimpleFieldTracker;
 import org.hibernate.bytecode.enhance.spi.CollectionTracker;
-import org.hibernate.bytecode.enhance.spi.EnhancementContext;
 import org.hibernate.bytecode.enhance.spi.EnhancementException;
 import org.hibernate.bytecode.enhance.spi.EnhancerConstants;
 import org.hibernate.bytecode.enhance.spi.interceptor.LazyAttributeLoadingInterceptor;
@@ -194,7 +192,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 			);
 		}
 		catch (CannotCompileException cce) {
-			cce.printStackTrace();
+			throw new RuntimeException( "createDirtyTrackerMethodsWithoutCollections failed", cce );
 		}
 	}
 
@@ -273,7 +271,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 			);
 		}
 		catch (CannotCompileException cce) {
-			cce.printStackTrace();
+			throw new RuntimeException( "createDirtyTrackerMethodsWithCollections failed", cce );
 		}
 	}
 
@@ -285,7 +283,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 			if ( Modifier.isStatic( ctField.getModifiers() ) || ctField.getName().startsWith( "$$_hibernate_" ) ) {
 				continue;
 			}
-			if ( enhancementContext.isPersistentField( ctField ) && !enhancementContext.isMappedCollection( ctField ) ) {
+			if ( enhancementContext.isPersistentField( ctField ) && enhancementContext.isMappedCollection( ctField ) ) {
 				if ( PersistentAttributesHelper.isAssignable( ctField, Collection.class.getName() ) ||
 						PersistentAttributesHelper.isAssignable( ctField, Map.class.getName() ) ) {
 					collectionList.add( ctField );
@@ -316,7 +314,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 
 			for ( CtField ctField : managedCtSuperclass.getDeclaredFields() ) {
 				if ( !Modifier.isStatic( ctField.getModifiers() ) ) {
-					if ( enhancementContext.isPersistentField( ctField ) && !enhancementContext.isMappedCollection( ctField ) ) {
+					if ( enhancementContext.isPersistentField( ctField ) && enhancementContext.isMappedCollection( ctField ) ) {
 						if ( PersistentAttributesHelper.isAssignable( ctField, Collection.class.getName() ) ||
 								PersistentAttributesHelper.isAssignable( ctField, Map.class.getName() ) ) {
 							collectionList.add( ctField );
@@ -361,7 +359,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 			MethodWriter.write( managedCtClass, body.toString() );
 		}
 		catch (CannotCompileException cce) {
-			cce.printStackTrace();
+			throw new RuntimeException( "createCollectionDirtyCheckMethod failed", cce );
 		}
 	}
 
@@ -395,7 +393,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 			MethodWriter.write( managedCtClass, body.toString() );
 		}
 		catch (CannotCompileException cce) {
-			cce.printStackTrace();
+			throw new RuntimeException( "createCollectionDirtyCheckGetFieldsMethod failed", cce );
 		}
 	}
 
@@ -443,7 +441,7 @@ public class EntityEnhancer extends PersistentAttributesEnhancer {
 			MethodWriter.write( managedCtClass, body.toString() );
 		}
 		catch (CannotCompileException cce) {
-			cce.printStackTrace();
+			throw cce;
 		}
 	}
 

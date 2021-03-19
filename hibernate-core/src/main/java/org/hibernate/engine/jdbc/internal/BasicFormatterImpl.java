@@ -40,7 +40,6 @@ public class BasicFormatterImpl implements Formatter {
 		END_CLAUSES.add( "where" );
 		END_CLAUSES.add( "set" );
 		END_CLAUSES.add( "having" );
-		END_CLAUSES.add( "join" );
 		END_CLAUSES.add( "from" );
 		END_CLAUSES.add( "by" );
 		END_CLAUSES.add( "join" );
@@ -79,7 +78,6 @@ public class BasicFormatterImpl implements Formatter {
 		boolean beginLine = true;
 		boolean afterBeginBeforeEnd;
 		boolean afterByOrSetOrFromOrSelect;
-		boolean afterValues;
 		boolean afterOn;
 		boolean afterBetween;
 		boolean afterInsert;
@@ -127,7 +125,17 @@ public class BasicFormatterImpl implements Formatter {
 						t = tokens.nextToken();
 						token += t;
 					}
-					while ( !"\"".equals( t ) );
+					while ( !"\"".equals( t )  && tokens.hasMoreTokens() );
+				}
+				// SQL Server uses "[" and "]" to escape reserved words
+				// see SQLServerDialect.openQuote and SQLServerDialect.closeQuote
+				else if ( "[".equals( token ) ) {
+					String t;
+					do {
+						t = tokens.nextToken();
+						token += t;
+					}
+					while ( !"]".equals( t ) && tokens.hasMoreTokens());
 				}
 
 				if ( afterByOrSetOrFromOrSelect && ",".equals( token ) ) {
@@ -312,7 +320,6 @@ public class BasicFormatterImpl implements Formatter {
 			out();
 			indent++;
 			newline();
-			afterValues = true;
 		}
 
 		private void closeParen() {

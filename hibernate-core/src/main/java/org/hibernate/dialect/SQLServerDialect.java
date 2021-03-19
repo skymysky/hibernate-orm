@@ -20,6 +20,8 @@ import org.hibernate.dialect.pagination.LegacyLimitHandler;
 import org.hibernate.dialect.pagination.LimitHandler;
 import org.hibernate.dialect.pagination.TopLimitHandler;
 import org.hibernate.type.StandardBasicTypes;
+import org.hibernate.type.StringType;
+import org.hibernate.type.Type;
 import org.hibernate.type.descriptor.sql.SmallIntTypeDescriptor;
 import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
 
@@ -121,6 +123,11 @@ public class SQLServerDialect extends AbstractTransactSQLDialect {
 	}
 
 	@Override
+	public String getCurrentSchemaCommand() {
+		return "SELECT SCHEMA_NAME()";
+	}
+
+	@Override
 	public char openQuote() {
 		return '[';
 	}
@@ -208,5 +215,20 @@ public class SQLServerDialect extends AbstractTransactSQLDialect {
 	@Override
 	public IdentityColumnSupport getIdentityColumnSupport() {
 		return new SQLServerIdentityColumnSupport();
+	}
+
+	@Override
+	public String getCreateTemporaryTableColumnAnnotation(int sqlTypeCode) {
+		switch (sqlTypeCode) {
+			case Types.CHAR:
+			case Types.NCHAR:
+			case Types.VARCHAR:
+			case Types.NVARCHAR:
+			case Types.LONGVARCHAR:
+			case Types.LONGNVARCHAR:
+				return "collate database_default";
+			default:
+				return "";
+		}
 	}
 }

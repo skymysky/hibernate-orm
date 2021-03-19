@@ -9,11 +9,12 @@ package org.hibernate.cfg;
 import java.util.Iterator;
 import java.util.Map;
 
-import javax.persistence.ConstraintMode;
+import javax.persistence.JoinColumn;
+import javax.persistence.JoinColumns;
 
 import org.hibernate.AnnotationException;
+import org.hibernate.FetchMode;
 import org.hibernate.MappingException;
-import org.hibernate.annotations.ForeignKey;
 import org.hibernate.annotations.LazyGroup;
 import org.hibernate.annotations.common.reflection.XClass;
 import org.hibernate.boot.spi.MetadataBuildingContext;
@@ -48,7 +49,7 @@ public class OneToOneSecondPass implements SecondPass {
 	private String cascadeStrategy;
 	private Ejb3JoinColumn[] joinColumns;
 
-	//that suck, we should read that from the property mainly
+	//that sucks, we should read that from the property mainly
 	public OneToOneSecondPass(
 			String mappedBy,
 			String ownerEntity,
@@ -79,25 +80,33 @@ public class OneToOneSecondPass implements SecondPass {
 	//TODO refactor this code, there is a lot of duplication in this method
 	public void doSecondPass(Map persistentClasses) throws MappingException {
 		org.hibernate.mapping.OneToOne value = new org.hibernate.mapping.OneToOne(
-				buildingContext.getMetadataCollector(),
+				buildingContext,
 				propertyHolder.getTable(),
 				propertyHolder.getPersistentClass()
 		);
 		final String propertyName = inferredData.getPropertyName();
 		value.setPropertyName( propertyName );
 		String referencedEntityName = ToOneBinder.getReferenceEntityName( inferredData, targetEntity, buildingContext );
-		value.setReferencedEntityName( referencedEntityName );  
+		value.setReferencedEntityName( referencedEntityName );
 		AnnotationBinder.defineFetchingStrategy( value, inferredData.getProperty() );
 		//value.setFetchMode( fetchMode );
 		value.setCascadeDeleteEnabled( cascadeOnDelete );
 		//value.setLazy( fetchMode != FetchMode.JOIN );
 
-		if ( !optional ) value.setConstrained( true );
-		value.setForeignKeyType(
-				value.isConstrained()
-						? ForeignKeyDirection.FROM_PARENT
-						: ForeignKeyDirection.TO_PARENT
+		value.setConstrained( !optional );
+		final ForeignKeyDirection foreignKeyDirection = !BinderHelper.isEmptyAnnotationValue( mappedBy )
+				? ForeignKeyDirection.TO_PARENT
+				: ForeignKeyDirection.FROM_PARENT;
+		value.setForeignKeyType(foreignKeyDirection);
+		AnnotationBinder.bindForeignKeyNameAndDefinition(
+				value,
+				inferredData.getProperty(),
+				inferredData.getProperty().getAnnotation( javax.persistence.ForeignKey.class ),
+				inferredData.getProperty().getAnnotation( JoinColumn.class ),
+				inferredData.getProperty().getAnnotation( JoinColumns.class),
+				buildingContext
 		);
+
 		PropertyBinder binder = new PropertyBinder();
 		binder.setName( propertyName );
 		binder.setValue( value );
@@ -180,7 +189,7 @@ public class OneToOneSecondPass implements SecondPass {
 					Join mappedByJoin = buildJoinFromMappedBySide(
 							(PersistentClass) persistentClasses.get( ownerEntity ), otherSideProperty, otherSideJoin
 					);
-					ManyToOne manyToOne = new ManyToOne( buildingContext.getMetadataCollector(), mappedByJoin.getTable() );
+					ManyToOne manyToOne = new ManyToOne( buildingContext, mappedByJoin.getTable() );
 					//FIXME use ignore not found here
 					manyToOne.setIgnoreNotFound( ignoreNotFound );
 					manyToOne.setCascadeDeleteEnabled( value.isCascadeDeleteEnabled() );
@@ -211,7 +220,7 @@ public class OneToOneSecondPass implements SecondPass {
 				else {
 					propertyHolder.addProperty( prop, inferredData.getDeclaringClass() );
 				}
-				
+
 				value.setReferencedPropertyName( mappedBy );
 
 				// HHH-6813
@@ -227,12 +236,6 @@ public class OneToOneSecondPass implements SecondPass {
 				}
 				boolean referenceToPrimaryKey  = referencesDerivedId || mappedBy == null;
 				value.setReferenceToPrimaryKey( referenceToPrimaryKey );
-				
-				// If the other side is a derived ID, prevent an infinite
-				// loop of attempts to resolve identifiers.
-				if ( referencesDerivedId ) {
-					( (ManyToOne) otherSideProperty.getValue() ).setReferenceToPrimaryKey( false );
-				}
 
 				String propertyRef = value.getReferencedPropertyName();
 				if ( propertyRef != null ) {
@@ -253,33 +256,17 @@ public class OneToOneSecondPass implements SecondPass {
 				);
 			}
 		}
-
-		final ForeignKey fk = inferredData.getProperty().getAnnotation( ForeignKey.class );
-		if ( fk != null && !BinderHelper.isEmptyAnnotationValue( fk.name() ) ) {
-			value.setForeignKeyName( fk.name() );
-		}
-		else {
-			final javax.persistence.ForeignKey jpaFk = inferredData.getProperty().getAnnotation( javax.persistence.ForeignKey.class );
-			if ( jpaFk != null ) {
-				if ( jpaFk.value() == ConstraintMode.NO_CONSTRAINT ) {
-					value.setForeignKeyName( "none" );
-				}
-				else {
-					value.setForeignKeyName( StringHelper.nullIfEmpty( jpaFk.name() ) );
-					value.setForeignKeyDefinition( StringHelper.nullIfEmpty( jpaFk.foreignKeyDefinition() ) );
-				}
-			}
-		}
 	}
 
 	/**
-	 * Builds the <code>Join</code> instance for the mapped by side of a <i>OneToOne</i> association using 
-	 * a join tables.
+	 * Builds the <code>Join</code> instance for the mapped by side of a <i>OneToOne</i> association using
+	 * a join table.
 	 * <p>
 	 * Note:<br/>
 	 * <ul>
 	 * <li>From the mappedBy side we should not create the PK nor the FK, this is handled from the other side.</li>
-	 * <li>This method is a dirty dupe of EntityBinder.bindSecondaryTable</i>.
+	 * <li>This method is a dirty dupe of EntityBinder.bindSecondaryTable</li>.
+	 * </ul>
 	 * </p>
 	 */
 	private Join buildJoinFromMappedBySide(PersistentClass persistentClass, Property otherSideProperty, Join originalJoin) {
@@ -289,7 +276,7 @@ public class OneToOneSecondPass implements SecondPass {
 		//no check constraints available on joins
 		join.setTable( originalJoin.getTable() );
 		join.setInverse( true );
-		SimpleValue key = new DependantValue( buildingContext.getMetadataCollector(), join.getTable(), persistentClass.getIdentifier() );
+		SimpleValue key = new DependantValue( buildingContext, join.getTable(), persistentClass.getIdentifier() );
 		//TODO support @ForeignKey
 		join.setKey( key );
 		join.setSequentialSelect( false );

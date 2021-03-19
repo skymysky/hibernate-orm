@@ -12,6 +12,7 @@ import org.hibernate.QueryException;
 import org.hibernate.dialect.function.StandardSQLFunction;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.spatial.SpatialAnalysis;
+import org.hibernate.spatial.SpatialFunction;
 import org.hibernate.spatial.SpatialRelation;
 import org.hibernate.spatial.dialect.SpatialFunctionsRegistry;
 import org.hibernate.spatial.dialect.oracle.criterion.OracleSpatialAggregate;
@@ -37,13 +38,13 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 		);
 		put(
 				"isempty",
-				new WrappedOGCFunction( "OGC_ISEMPTY", StandardBasicTypes.BOOLEAN, new boolean[] {true} )
+				new WrappedOGCFunction( "OGC_ISEMPTY", StandardBasicTypes.BOOLEAN, new boolean[] { true } )
 		);
 		put(
 				"issimple",
-				new WrappedOGCFunction( "OGC_ISSIMPLE", StandardBasicTypes.BOOLEAN, new boolean[] {true} )
+				new WrappedOGCFunction( "OGC_ISSIMPLE", StandardBasicTypes.BOOLEAN, new boolean[] { true } )
 		);
-		put( "boundary", new WrappedOGCFunction( "OGC_BOUNDARY", new boolean[] {true} ) );
+		put( "boundary", new WrappedOGCFunction( "OGC_BOUNDARY", new boolean[] { true } ) );
 
 		// put("area", new AreaFunction());
 
@@ -83,7 +84,7 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 		);
 		put(
 				"relate",
-				new WrappedOGCFunction( "OGC_RELATE", StandardBasicTypes.BOOLEAN, new boolean[] {true, true, false} )
+				new WrappedOGCFunction( "OGC_RELATE", StandardBasicTypes.BOOLEAN, new boolean[] { true, true, false } )
 		);
 
 		// Register spatial analysis functions.
@@ -138,6 +139,12 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 				new SpatialAggregationFunction( "extent", OracleSpatialAggregate.EXTENT, sdoSupport )
 		);
 
+		// spatial filter function
+		put(
+				SpatialFunction.filter.name(),
+				new StandardSQLFunction( "SDO_FILTER" )
+		);
+
 		//other common functions
 
 		put( "transform", new StandardSQLFunction( "SDO_CS.TRANSFORM" ) );
@@ -166,58 +173,39 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 
 	}
 
-	/**
-	 * Implementation of the OGC astext function for HQL.
-	 */
-	private static class AsTextFunction extends StandardSQLFunction {
-
-		private AsTextFunction() {
-			super( "astext", StandardBasicTypes.STRING );
-		}
-
-		public String render(Type firstArgumentType, final List args, final SessionFactoryImplementor factory) {
-			final StringBuilder buf = new StringBuilder();
-			if ( args.isEmpty() ) {
-				throw new IllegalArgumentException( "First Argument in arglist must be object " + "to which method is applied" );
-			}
-			buf.append( "TO_CHAR(SDO_UTIL.TO_WKTGEOMETRY(" ).append( args.get( 0 ) ).append( "))" );
-			return buf.toString();
-		}
-	}
-
 	static String getOGCSpatialAnalysisSQL(List args, int spatialAnalysisFunction) {
 		boolean[] geomArgs;
-		final StringBuffer ogcFunction = new StringBuffer( "MDSYS." );
+		final StringBuilder ogcFunction = new StringBuilder( "MDSYS." );
 		boolean isGeomReturn = true;
 		switch ( spatialAnalysisFunction ) {
 			case SpatialAnalysis.BUFFER:
 				ogcFunction.append( "OGC_BUFFER" );
-				geomArgs = new boolean[] {true, false};
+				geomArgs = new boolean[] { true, false };
 				break;
 			case SpatialAnalysis.CONVEXHULL:
 				ogcFunction.append( "OGC_CONVEXHULL" );
-				geomArgs = new boolean[] {true};
+				geomArgs = new boolean[] { true };
 				break;
 			case SpatialAnalysis.DIFFERENCE:
 				ogcFunction.append( "OGC_DIFFERENCE" );
-				geomArgs = new boolean[] {true, true};
+				geomArgs = new boolean[] { true, true };
 				break;
 			case SpatialAnalysis.DISTANCE:
 				ogcFunction.append( "OGC_DISTANCE" );
-				geomArgs = new boolean[] {true, true};
+				geomArgs = new boolean[] { true, true };
 				isGeomReturn = false;
 				break;
 			case SpatialAnalysis.INTERSECTION:
 				ogcFunction.append( "OGC_INTERSECTION" );
-				geomArgs = new boolean[] {true, true};
+				geomArgs = new boolean[] { true, true };
 				break;
 			case SpatialAnalysis.SYMDIFFERENCE:
 				ogcFunction.append( "OGC_SYMMETRICDIFFERENCE" );
-				geomArgs = new boolean[] {true, true};
+				geomArgs = new boolean[] { true, true };
 				break;
 			case SpatialAnalysis.UNION:
 				ogcFunction.append( "OGC_UNION" );
-				geomArgs = new boolean[] {true, true};
+				geomArgs = new boolean[] { true, true };
 				break;
 			default:
 				throw new IllegalArgumentException(
@@ -252,7 +240,7 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 		return ogcFunction.toString();
 	}
 
-	private static StringBuffer wrapInSTGeometry(String geomColumn, StringBuffer toAdd) {
+	private static StringBuilder wrapInSTGeometry(String geomColumn, StringBuilder toAdd) {
 		return toAdd.append( "MDSYS.ST_GEOMETRY(" ).append( geomColumn )
 				.append( ")" );
 	}
@@ -265,6 +253,24 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 		return getOGCSpatialAnalysisSQL( args, spatialAnalysisFunction );
 	}
 
+	/**
+	 * Implementation of the OGC astext function for HQL.
+	 */
+	private static class AsTextFunction extends StandardSQLFunction {
+
+		private AsTextFunction() {
+			super( "astext", StandardBasicTypes.STRING );
+		}
+
+		public String render(Type firstArgumentType, final List args, final SessionFactoryImplementor factory) {
+			final StringBuilder buf = new StringBuilder();
+			if ( args.isEmpty() ) {
+				throw new IllegalArgumentException( "First Argument in arglist must be object " + "to which method is applied" );
+			}
+			buf.append( "TO_CHAR(SDO_UTIL.TO_WKTGEOMETRY(" ).append( args.get( 0 ) ).append( "))" );
+			return buf.toString();
+		}
+	}
 
 	/**
 	 * HQL Spatial relation function.
@@ -279,7 +285,7 @@ class OracleSpatialFunctions extends SpatialFunctionsRegistry {
 				final int relation,
 				final boolean isOGCStrict,
 				OracleSDOSupport sdo) {
-			super( name,  StandardBasicTypes.BOOLEAN );
+			super( name, StandardBasicTypes.BOOLEAN );
 			this.relation = relation;
 			this.isOGCStrict = isOGCStrict;
 			this.sdo = sdo;
